@@ -1,0 +1,9 @@
+# Data is re-downloadable and too large for GitHub
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
