@@ -12,12 +12,17 @@ from pathlib import Path
 
 import nflreadpy as nfl  # returns Polars DataFrames
 
+import polars as pl
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
 # Next Gen Stats (separation, rush yards over expected) start in 2016,
 # so that's a natural first season for a consistent dataset.
-SEASONS = list(range(2016, 2026))  # 2016-2025
+LAST_SEASON = 2025                 # freeze data here; 2026 is the test season
+CUTOFF_DATE = "2026-09-09"         # 2026 kickoff, nothing on or after this date
+SEASONS = list(range(2016, LAST_SEASON + 1))
+PFR_SEASONS = list(range(2018, LAST_SEASON + 1))   # PFR advanced stats start in 2018
 
 RAW_DIR = Path("data/raw")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,8 +82,28 @@ save(nfl.load_rosters(SEASONS), "rosters")            # player, team, position b
 try:
     save(nfl.load_ff_playerids(), "ff_playerids")
 except ConnectionError:
-    import polars as pl
     url = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv"
     save(pl.read_csv(url, infer_schema_length=10000, null_values=["NA"]), "ff_playerids")
 
+# ---------------------------------------------------------------------------
+# 5. Added datasets
+# ---------------------------------------------------------------------------
+print("Added datasets...")
+save(nfl.load_participation(SEASONS), "participation")    # who was on the field, routes, man/zone coverage
+save(nfl.load_combine(), "combine")                        # 40 time, vertical, etc. (all draft classes)
+save(nfl.load_pfr_advstats(PFR_SEASONS, stat_type="rush"), "pfr_adv_rush")  # yards before/after contact
+save(nfl.load_pfr_advstats(PFR_SEASONS, stat_type="rec"), "pfr_adv_rec")
+save(nfl.load_ff_opportunity(SEASONS), "ff_opportunity")   # expected fantasy points from usage
+
+# Expert consensus rankings (FantasyPros, archived by DynastyProcess).
+# Same source as the player IDs, so same fallback.
+try:
+    ecr = nfl.load_ff_rankings("all")
+except ConnectionError:
+    url = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_fpecr.parquet"
+    ecr = pl.read_parquet(url)
+
+# Keep only rankings published before the 2026 kickoff (no in-season leakage)
+ecr = ecr.filter(pl.col("scrape_date") < CUTOFF_DATE)
+save(ecr, "ecr_rankings")
 print("\nDone.")
