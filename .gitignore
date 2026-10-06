@@ -7,3 +7,9 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Jupyter autosave copies
+.ipynb_checkpoints/
+
+# Personal scratch notebooks (not committed)
+scratch/

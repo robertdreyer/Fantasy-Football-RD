@@ -67,7 +67,7 @@ for season in SEASONS:
 # 4. Context tables
 # ---------------------------------------------------------------------------
 print("Context tables...")
-save(nfl.load_snap_counts(SEASONS), "snap_counts")    # usage (2012+)
+save(nfl.load_snap_counts(SEASONS), "snap_counts")    # usage (2013+)
 save(nfl.load_injuries(SEASONS), "injuries")          # weekly injury reports
 save(nfl.load_schedules(SEASONS), "schedules")        # games, head coaches, Vegas lines
 save(nfl.load_rosters(SEASONS), "rosters")            # player, team, position by season
