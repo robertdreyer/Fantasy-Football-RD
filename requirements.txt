@@ -3,3 +3,6 @@ polars
 pyarrow
 pandas
 numpy
+matplotlib
+requests
+scikit-learn

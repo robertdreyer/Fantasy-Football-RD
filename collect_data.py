@@ -106,4 +106,32 @@ except ConnectionError:
 # Keep only rankings published before the 2026 kickoff (no in-season leakage)
 ecr = ecr.filter(pl.col("scrape_date") < CUTOFF_DATE)
 save(ecr, "ecr_rankings")
+
+# ---------------------------------------------------------------------------
+# 6. Role, contracts and scheme data
+# ---------------------------------------------------------------------------
+print("Role, contracts and scheme data...")
+# Depth charts changed format in 2025: weekly charts through 2024, timestamped
+# snapshots from 2025 on. The 2026 file keeps only snapshots taken BEFORE kickoff.
+save(nfl.load_depth_charts(list(range(2016, 2025))), "depth_charts_weekly")
+dc_new = nfl.load_depth_charts([2025, 2026])
+dc_new = dc_new.filter(pl.col("dt") < CUTOFF_DATE)   # timestamps like "2026-09-04T..." compare as text
+save(dc_new, "depth_charts_daily")
+
+save(nfl.load_ftn_charting(list(range(2022, LAST_SEASON + 1))), "ftn_charting")  # 2022+ hand charting
+save(nfl.load_draft_picks(), "draft_picks")
+
+trades = nfl.load_trades()
+save(trades.filter(pl.col("trade_date").cast(pl.Utf8) < CUTOFF_DATE), "trades")
+
+# Contracts (OverTheCap). Only a signing YEAR is available, not a date, so a
+# handful of in-season 2026 extensions can slip in. Use with that caveat.
+save(nfl.load_contracts(), "contracts")
+
+# 2026 schedule: matchups only (who plays whom, when). Scores are dropped so no
+# 2026 results enter the project. Used for next-season strength of schedule.
+sched_2026 = nfl.load_schedules(2026).select(
+    ["game_id", "season", "game_type", "week", "gameday", "home_team", "away_team"])
+save(sched_2026, "schedule_2026")
+
 print("\nDone.")

@@ -37,7 +37,9 @@ SEASONS = list(range(2016, 2026))
 POSITIONS = ["WR", "TE", "RB"]
 KICKOFF_2026 = "2026-09-09"
 
-# FantasyPros team codes -> nflverse team codes
+COORDINATORS = Path("reference/coordinators.csv")   # made by collect_coordinators.py
+
+# Older team codes (FantasyPros, old depth charts) -> nflverse team codes
 TEAM_FIX = {"JAC": "JAX", "LAR": "LA", "OAK": "LV", "SD": "LAC", "STL": "LA"}
 
 
@@ -107,7 +109,8 @@ part = part.rename(columns={"nflverse_game_id": "game_id"})
 PBP_COLS = ["game_id", "play_id", "season", "season_type", "posteam", "defteam", "play_type",
             "qb_dropback", "rush_attempt", "qb_scramble", "two_point_attempt", "pass_attempt",
             "receiver_player_id", "receiving_yards", "rushing_yards", "passer_player_id",
-            "passer_player_name", "epa", "pass_oe", "cpoe", "yardline_100", "down"]
+            "passer_player_name", "epa", "pass_oe", "cpoe", "yardline_100", "down",
+            "air_yards", "rusher_player_id", "week"]
 pbp = pd.concat(
     [pd.read_parquet(RAW / f"pbp_{s}.parquet", columns=PBP_COLS) for s in SEASONS],
     ignore_index=True,
@@ -317,7 +320,7 @@ ecr = ecr[ecr["season"].isin(kickoff) & (ecr["scrape_date"] < ecr["season"].map(
 # Keep the LAST snapshot before each season's kickoff
 ecr = ecr[ecr["scrape_date"] == ecr.groupby("season")["scrape_date"].transform("max")]
 ecr["preseason_rank"] = ecr.groupby(["season", "pos"])["ecr"].rank(method="first").astype(int)
-ecr["preseason_team"] = ecr["team"].replace(TEAM_FIX)
+ecr["preseason_team"] = ecr["team"].replace(TEAM_FIX).replace({"FA": np.nan})   # FA = unsigned
 
 # FantasyPros id -> gsis id
 ids = pd.read_parquet(RAW / "ff_playerids.parquet", columns=["fantasypros_id", "gsis_id"]).dropna()
@@ -333,11 +336,192 @@ box["finish_rank"] = box.groupby(["season", "position"])["ppr"].rank(ascending=F
 box["finish_rank_ppg"] = (box[box["games"] >= 6].groupby(["season", "position"])["ppr_per_game"]
                           .rank(ascending=False, method="first"))
 
+# ===========================================================================
+# 6. MORE PLAYER FEATURES: scoring chances, role, consistency, health, scheme
+# ===========================================================================
+print("7. Red zone, deep targets, consistency, injuries, scheme...")
+
+# --- 6a. Red-zone / end-zone / deep targets and goal-line carries (play-by-play)
+tg = pbp[(pbp["play_type"] == "pass") & pbp["receiver_player_id"].notna()].copy()
+tg["rz"] = tg["yardline_100"] <= 20
+tg["ez"] = tg["air_yards"] >= tg["yardline_100"]          # thrown into the end zone
+tg["deep"] = tg["air_yards"] >= 20
+ca = pbp[(pbp["rush_attempt"] == 1) & (pbp["qb_scramble"] == 0) & pbp["rusher_player_id"].notna()].copy()
+ca["rz"] = ca["yardline_100"] <= 20
+ca["gl"] = ca["yardline_100"] <= 5
+
+scoring = pd.concat([
+    tg.groupby(["receiver_player_id", "season"])[["rz", "ez", "deep"]].sum()
+      .rename(columns={"rz": "rz_targets", "ez": "ez_targets", "deep": "deep_targets"}),
+    ca.groupby(["rusher_player_id", "season"])[["rz", "gl"]].sum()
+      .rename(columns={"rz": "rz_carries", "gl": "gl_carries"}),
+], axis=1).fillna(0)
+scoring.index.names = ["player_id", "season"]
+scoring = scoring.reset_index()
+
+team_scoring = pd.concat([
+    tg.groupby(["posteam", "season"])[["rz", "ez"]].sum().rename(columns={"rz": "t_rz_tgt", "ez": "t_ez_tgt"}),
+    ca.groupby(["posteam", "season"])[["rz", "gl"]].sum().rename(columns={"rz": "t_rz_car", "gl": "t_gl_car"}),
+], axis=1).reset_index().rename(columns={"posteam": "team"})
+
+# --- 6b. Week-to-week consistency (weekly PPR)
+wk = stats[["player_id", "season", "week", "fantasy_points_ppr"]]
+consistency = wk.groupby(["player_id", "season"])["fantasy_points_ppr"].agg(
+    ppr_weekly_sd="std",
+    boom_rate=lambda x: (x >= 20).mean(),     # share of games with 20+ PPR points
+    bust_rate=lambda x: (x < 5).mean(),       # share of games under 5
+).reset_index()
+halves = (wk.assign(half=np.where(wk["week"] <= 9, "first_half_ppg", "second_half_ppg"))
+          .groupby(["player_id", "season", "half"])["fantasy_points_ppr"].mean().unstack().reset_index())
+halves["second_half_trend"] = halves["second_half_ppg"] - halves["first_half_ppg"]   # + = finished strong
+consistency = consistency.merge(halves, on=["player_id", "season"], how="left")
+
+# --- 6c. Health: injury-report history and games missed
+inj = pd.read_parquet(RAW / "injuries.parquet")
+inj = inj[inj["game_type"] == "REG"].dropna(subset=["gsis_id"])
+inj["season"] = inj["season"].astype(int)
+soft = inj["report_primary_injury"].fillna("").str.contains("Hamstring|Groin|Calf|Quad", case=False)
+health = (inj.assign(out=inj["report_status"] == "Out",
+                     dnp=inj["practice_status"].fillna("").str.startswith("Did Not"),
+                     soft=soft)
+          .groupby(["gsis_id", "season"])[["out", "dnp", "soft"]].sum()
+          .rename(columns={"out": "weeks_listed_out", "dnp": "weeks_dnp_practice",
+                           "soft": "soft_tissue_reports"})
+          .reset_index().rename(columns={"gsis_id": "player_id"}))
+
+# --- 6d. Targets: catchable / contested (FTN charting, 2022+)
+ftn = pd.read_parquet(RAW / "ftn_charting.parquet",
+                      columns=["nflverse_game_id", "nflverse_play_id", "is_catchable_ball",
+                               "is_contested_ball", "is_motion", "is_play_action", "is_screen_pass"])
+ftn = ftn.rename(columns={"nflverse_game_id": "game_id", "nflverse_play_id": "play_id"})
+tg_ftn = tg.merge(ftn, on=["game_id", "play_id"], how="inner")
+target_quality = tg_ftn.groupby(["receiver_player_id", "season"]).agg(
+    catchable_target_rate=("is_catchable_ball", "mean"),
+    contested_target_rate=("is_contested_ball", "mean"),
+).reset_index().rename(columns={"receiver_player_id": "player_id"})
+
+# --- 6e. Scheme and protection (team-season)
+db_ftn = pbp[pbp["qb_dropback"] == 1].merge(ftn, on=["game_id", "play_id"], how="inner")
+scheme = db_ftn.groupby(["posteam", "season"]).agg(
+    team_motion_rate=("is_motion", "mean"),
+    team_play_action_rate=("is_play_action", "mean"),
+    team_screen_rate=("is_screen_pass", "mean"),
+).reset_index().rename(columns={"posteam": "team"})
+press = pd.read_parquet(RAW / "participation.parquet", columns=["nflverse_game_id", "play_id", "was_pressure"])
+press = press.rename(columns={"nflverse_game_id": "game_id"}).dropna(subset=["was_pressure"])
+press = pbp[pbp["qb_dropback"] == 1].merge(press, on=["game_id", "play_id"], how="inner")
+press = (press.assign(was_pressure=press["was_pressure"].astype(bool))
+         .groupby(["posteam", "season"])["was_pressure"].mean()
+         .rename("team_pressure_rate_allowed").reset_index().rename(columns={"posteam": "team"}))
+team = (team.merge(team_scoring, on=["team", "season"], how="left")
+            .merge(scheme, on=["team", "season"], how="left")
+            .merge(press, on=["team", "season"], how="left"))
+
+
+# ===========================================================================
+# 7. PRESEASON ROLE: depth chart before each kickoff (incl. 2026), contracts
+# ===========================================================================
+print("8. Preseason depth charts, vacated targets, contracts...")
+# Old format (2016-2024): week-1 chart. depth_team 1 = starter (3 WR starters, 1 RB, 1 TE).
+dco = pd.read_parquet(RAW / "depth_charts_weekly.parquet")
+dco = dco[(dco["formation"] == "Offense") & dco["position"].isin(POSITIONS) & (dco["game_type"] == "REG")]
+dco = dco[dco["week"] == dco.groupby("season")["week"].transform("min")]
+dco["depth"] = pd.to_numeric(dco["depth_team"].astype(str).str.strip(), errors="coerce")
+dco = dco.rename(columns={"gsis_id": "player_id", "club_code": "depth_team_code"})
+
+# New format (2025+): last snapshot before kickoff. Convert WR rank to the same tiers
+# as the old format (WR1-3 = tier 1, WR4-6 = tier 2); RB/TE rank = tier.
+dcn = pd.read_parquet(RAW / "depth_charts_daily.parquet")
+dcn = dcn[dcn["pos_abb"].isin(POSITIONS) & ~dcn["pos_grp"].str.contains("Special|D$|Defense", regex=True)]
+dcn["season"] = dcn["dt"].str[:4].astype(int)
+dcn = dcn[dcn["dt"].str[:10] < dcn["season"].map(kickoff)]
+dcn = dcn[dcn["dt"] == dcn.groupby("season")["dt"].transform("max")]
+dcn["depth"] = np.where(dcn["pos_abb"] == "WR", np.ceil(dcn["pos_rank"] / 3), dcn["pos_rank"])
+dcn = dcn.rename(columns={"gsis_id": "player_id", "team": "depth_team_code"})
+
+depth = pd.concat([dco[["player_id", "season", "depth_team_code", "depth"]],
+                   dcn[["player_id", "season", "depth_team_code", "depth"]]], ignore_index=True)
+depth = depth.dropna(subset=["player_id"])
+depth["depth_team_code"] = depth["depth_team_code"].replace(TEAM_FIX)
+depth = (depth.sort_values("depth").drop_duplicates(["player_id", "season"])
+         .rename(columns={"depth_team_code": "preseason_depth_team", "depth": "preseason_depth_tier"}))
+
+# Preseason team for every player-season: depth chart first, FantasyPros as backup
+pre_team = depth[["player_id", "season", "preseason_depth_team"]].merge(
+    ecr[["player_id", "season", "preseason_team"]], on=["player_id", "season"], how="outer")
+pre_team["preseason_team"] = pre_team["preseason_depth_team"].fillna(pre_team["preseason_team"])
+pre_team = pre_team[["player_id", "season", "preseason_team"]]
+
+# Vacated targets/carries: production from team T in season N by players who are
+# NOT on T's depth chart (or anywhere) the following preseason.
+moves = box[["player_id", "season", "team", "targets", "carries"]].merge(
+    pre_team.assign(season=pre_team["season"] - 1).rename(columns={"preseason_team": "next_pre_team"}),
+    on=["player_id", "season"], how="left")
+moves["left"] = moves["next_pre_team"] != moves["team"]          # includes "no longer on any chart"
+vacated = moves.groupby(["team", "season"]).apply(
+    lambda g: pd.Series({
+        "vacated_target_share": g.loc[g["left"], "targets"].sum() / max(g["targets"].sum(), 1),
+        "vacated_carry_share": g.loc[g["left"], "carries"].sum() / max(g["carries"].sum(), 1),
+    }), include_groups=False).reset_index()
+# Only seasons where next preseason depth charts exist can be measured
+vacated = vacated[vacated["season"] + 1 <= 2026]
+
+# Contracts: the deal in force for the following season (OverTheCap)
+con = pd.read_parquet(RAW / "contracts.parquet",
+                      columns=["gsis_id", "year_signed", "years", "apy_cap_pct", "guaranteed"])
+con = con.dropna(subset=["gsis_id", "year_signed", "years"])
+con["last_year"] = con["year_signed"] + con["years"] - 1
+
+
+def contract_for(season_df):
+    """For each (player_id, season) row, the contract covering season + 1."""
+    m = season_df[["player_id", "season"]].merge(con, left_on="player_id", right_on="gsis_id")
+    target = m["season"] + 1
+    m = m[(m["year_signed"] <= target) & (m["last_year"] >= target)]
+    m = m.sort_values(["year_signed", "apy_cap_pct"]).drop_duplicates(["player_id", "season"], keep="last")
+    return m.assign(next_contract_new=(m["year_signed"] == m["season"] + 1).astype(int))[
+        ["player_id", "season", "apy_cap_pct", "guaranteed", "next_contract_new"]].rename(
+        columns={"apy_cap_pct": "next_contract_apy_cap_pct", "guaranteed": "next_contract_guaranteed_m"})
+
+
+
+# --- Next season's schedule strength: opponents' defense in the season just played.
+# (Defenses change a lot year to year, so expect this to be a weak signal.)
+defense = pd.concat([
+    db.groupby(["defteam", "season"])["epa"].mean().rename("def_epa_per_dropback_allowed"),
+    runs.groupby(["defteam", "season"])["epa"].mean().rename("def_epa_per_rush_allowed"),
+], axis=1).reset_index().rename(columns={"defteam": "opp"})
+sched = pd.concat([pd.read_parquet(RAW / "schedules.parquet").query("game_type == 'REG'"),
+                   pd.read_parquet(RAW / "schedule_2026.parquet").query("game_type == 'REG'")])
+sched = pd.concat([sched[["season", "home_team", "away_team"]].set_axis(["season", "team", "opp"], axis=1),
+                   sched[["season", "away_team", "home_team"]].set_axis(["season", "team", "opp"], axis=1)])
+sched["prev_season"] = sched["season"] - 1
+sos = (sched.merge(defense.rename(columns={"season": "prev_season"}), on=["opp", "prev_season"])
+       .groupby(["team", "season"])[["def_epa_per_dropback_allowed", "def_epa_per_rush_allowed"]].mean()
+       .rename(columns={"def_epa_per_dropback_allowed": "next_sos_pass_def_epa",
+                        "def_epa_per_rush_allowed": "next_sos_rush_def_epa"})
+       .reset_index())
+sos["season"] -= 1     # schedule for season N+1 lands on the season-N row
+
+# --- Coordinators (optional until reference/coordinators.csv exists)
+coords = None
+if COORDINATORS.exists():
+    coords = pd.read_csv(COORDINATORS)
+    for c in ["head_coach", "oc", "dc"]:
+        coords[c] = coords[c].fillna("").astype(str).str.split(" / ").str[0].replace("", np.nan)
+    coords = coords[["season", "team", "head_coach", "oc", "dc"]]
+    # OC tendency travels with the coordinator: his team's pass rate over expected that season
+    oc_proe = (coords.merge(team[["team", "season", "team_pass_rate_over_exp"]], on=["team", "season"])
+               .dropna(subset=["oc"]).groupby(["oc", "season"])["team_pass_rate_over_exp"].mean()
+               .rename("oc_pass_rate_over_exp").reset_index())
+else:
+    print("   (no reference/coordinators.csv yet: run collect_coordinators.py to add OC/DC columns)")
+
 
 # ===========================================================================
 # ASSEMBLE
 # ===========================================================================
-print("7. Assembling...")
+print("9. Assembling...")
 df = (
     box.merge(routes, on=["player_id", "season"], how="left")
     .merge(cov, on=["player_id", "season"], how="left")
@@ -350,6 +534,36 @@ df = (df.merge(pfr, left_on=["pfr_id", "season"], right_on=["pfr_player_id", "se
 df = df.merge(combine, on="pfr_id", how="left")
 df = df.merge(team, on=["team", "season"], how="left")
 df = df.merge(ecr.drop(columns=["preseason_team"]), on=["player_id", "season"], how="left")
+df = (df.merge(scoring, on=["player_id", "season"], how="left")
+        .merge(consistency, on=["player_id", "season"], how="left")
+        .merge(health, on=["player_id", "season"], how="left")
+        .merge(target_quality, on=["player_id", "season"], how="left")
+        .merge(depth, on=["player_id", "season"], how="left"))
+for c in ["rz_targets", "ez_targets", "deep_targets", "rz_carries", "gl_carries",
+          "weeks_listed_out", "weeks_dnp_practice", "soft_tissue_reports"]:
+    df[c] = df[c].fillna(0)
+df["rz_target_share"] = per(df["rz_targets"], df["t_rz_tgt"])
+df["ez_target_share"] = per(df["ez_targets"], df["t_ez_tgt"])
+df["rz_carry_share"] = per(df["rz_carries"], df["t_rz_car"])
+df["gl_carry_share"] = per(df["gl_carries"], df["t_gl_car"])
+df["deep_target_rate"] = per(df["deep_targets"], df["targets"])
+df["adot"] = per(df["air_yards"], df["targets"])
+df = df.drop(columns=["t_rz_tgt", "t_ez_tgt", "t_rz_car", "t_gl_car"])
+
+# Games missed (any reason) this season and the two before it
+team_games = pbp.groupby(["posteam", "season"])["game_id"].nunique().rename("team_games_played")
+df = df.merge(team_games, left_on=["team", "season"], right_index=True, how="left")
+df["games_missed"] = (df["team_games_played"] - df["games"]).clip(lower=0)
+gm = df[["player_id", "season", "games_missed"]]
+for lag in (1, 2):
+    df = df.merge(gm.assign(season=gm["season"] + lag)
+                    .rename(columns={"games_missed": f"games_missed_prev{lag}"}),
+                  on=["player_id", "season"], how="left")
+df["games_missed_last3"] = df[["games_missed", "games_missed_prev1", "games_missed_prev2"]].sum(axis=1, min_count=1)
+df = df.drop(columns=["team_games_played", "games_missed_prev1", "games_missed_prev2"])
+
+if coords is not None:
+    df = df.merge(coords, on=["team", "season"], how="left")
 
 df["xfp_per_game"] = df["xfp"] / df["games"]
 df["fp_over_expected_per_game"] = (df["fp_std"] - df["xfp"]) / df["games"]
@@ -370,15 +584,43 @@ nxt_ecr = nxt_ecr.rename(columns={"preseason_rank": "next_preseason_rank",
                                   "preseason_team": "next_preseason_team"})
 df = df.merge(nxt_ecr, on=["player_id", "season"], how="left")
 
+df = df.copy()   # defragment after many merges
+# Next preseason team: depth chart first, FantasyPros second
+nxt_team = pre_team.assign(season=pre_team["season"] - 1).rename(columns={"preseason_team": "nt"})
+nxt_depth = depth.assign(season=depth["season"] - 1)[["player_id", "season", "preseason_depth_tier"]] \
+                 .rename(columns={"preseason_depth_tier": "next_preseason_depth_tier"})
+df = df.merge(nxt_team, on=["player_id", "season"], how="left").merge(nxt_depth, on=["player_id", "season"], how="left")
+df["next_preseason_team"] = df["nt"].fillna(df["next_preseason_team"])
+df = df.drop(columns=["nt"])
 df["changed_team"] = np.where(df["next_preseason_team"].isna(), np.nan,
                               (df["next_preseason_team"] != df["team"]).astype(float))
+
+# Opportunity waiting on his NEXT team
+df = df.merge(vacated.rename(columns={"team": "next_preseason_team",
+                                      "vacated_target_share": "next_team_vacated_target_share",
+                                      "vacated_carry_share": "next_team_vacated_carry_share"}),
+              on=["next_preseason_team", "season"], how="left")
+df = df.merge(contract_for(df), on=["player_id", "season"], how="left")
+# Higher = easier schedule (opponents allowed more EPA last year)
+df = df.merge(sos.rename(columns={"team": "next_preseason_team"}), on=["next_preseason_team", "season"], how="left")
+
+if coords is not None:
+    nc = coords.assign(season=coords["season"] - 1).rename(
+        columns={"team": "next_preseason_team", "head_coach": "next_head_coach", "oc": "next_oc", "dc": "next_dc"})
+    df = df.merge(nc, on=["next_preseason_team", "season"], how="left")
+    df["oc_changed"] = np.where(df["next_oc"].isna() | df["oc"].isna(), np.nan,
+                                (df["next_oc"] != df["oc"]).astype(float))
+    # The incoming OC's pass rate over expected in his most recent season (any team)
+    df = df.merge(oc_proe.rename(columns={"oc": "next_oc", "oc_pass_rate_over_exp": "next_oc_prior_pass_rate_over_exp"}),
+                  on=["next_oc", "season"], how="left")
 df["next_outperformance"] = df["next_preseason_rank"] - df["next_finish_rank"]
 
 # Tidy column order
 first = ["player_id", "name", "position", "season", "team", "n_teams", "age", "years_exp",
          "games", "ppr", "ppr_per_game", "finish_rank", "finish_rank_ppg",
          "preseason_rank", "outperformance"]
-last = [c for c in df.columns if c.startswith("next_")] + ["changed_team"]
+last = [c for c in df.columns if c.startswith("next_")] + \
+       [c for c in ["changed_team", "oc_changed"] if c in df.columns]
 df = df[first + [c for c in df.columns if c not in first + last] + last]
 df = df.sort_values(["season", "position", "finish_rank"]).reset_index(drop=True)
 
