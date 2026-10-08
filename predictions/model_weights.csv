@@ -21,8 +21,6 @@ xfp_per_game,0.001,0.254,-0.32
 rz_target_share,0.054,0.213,
 next_team_vacated_target_share,0.186,-0.056,-0.024
 next_sos_pass_def_epa,-0.115,-0.159,
-oc_changed,-0.215,-0.115,0.117
-next_oc_prior_pass_rate_over_exp,-0.662,0.028,-0.347
 carries_per_game,,,0.96
 targets_per_game,,,0.465
 explosive_run_rate,,,0.026

@@ -1,0 +1,59 @@
+# Weekly 2026 grading + website update.
+# Runs every Tuesday morning (after Monday Night Football), on demand from the
+# Actions tab, and whenever predictions/ or build_site.py change on main.
+name: Weekly grading and site update
+
+on:
+  schedule:
+    - cron: "0 15 * * 2"          # Tuesdays 15:00 UTC = 8:00 am Pacific
+  workflow_dispatch:               # "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+    paths: ["predictions/**", "build_site.py", ".github/workflows/weekly-update.yml"]
+
+permissions:
+  contents: write                  # commit the updated grades back to the repo
+  pages: write                     # publish the site
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install packages
+        run: pip install nflreadpy polars pyarrow pandas numpy
+
+      - name: Grade 2026 predictions against results so far
+        if: github.event_name != 'push'
+        run: python grade_2026.py
+
+      - name: Build the website
+        run: python build_site.py
+
+      - name: Commit updated grades
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add predictions/
+          git diff --cached --quiet || (git commit -m "Weekly 2026 grading update" && git push)
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

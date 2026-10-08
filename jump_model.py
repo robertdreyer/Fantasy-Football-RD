@@ -66,6 +66,48 @@ POSITIONS = {
         leap_gain=4, leap_floor=14),
 }
 
+# Factor groups used to explain each prediction. Features inside a group often move
+# together (e.g. targets per route and target share), so their individual weights can
+# have surprising signs; the group total is the reliable, readable number.
+GROUPS = {
+    "track_record": (["baseline_ppg", "ppr_per_game", "second_half_trend"],
+                     "Room to grow from his baseline", "Hard to top his baseline (regression to the mean)"),
+    "usage_efficiency": (["tprr", "yprr", "fp_over_expected_per_game", "adot", "target_share",
+                          "route_participation", "xfp_per_game", "rz_target_share", "carries_per_game",
+                          "targets_per_game", "explosive_run_rate", "yac_per_carry", "ryoe_per_carry",
+                          "rz_carry_share", "gl_carry_share"],
+                         "Strong usage and efficiency", "Weaker usage and efficiency profile"),
+    "age_draft": (["age", "years_exp", "draft_pick_filled"],
+                  "Favorable age and draft capital", "Less favorable age and draft capital"),
+    "opportunity": (["next_team_vacated_target_share", "next_team_vacated_carry_share",
+                     "next_preseason_depth_tier", "depth_promotion", "changed_team"],
+                    "Opportunity opening up next season", "Less opportunity next season"),
+    "team": (["qb_epa_per_dropback", "team_pass_rate_over_exp", "next_sos_pass_def_epa", "next_sos_rush_def_epa",
+              "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate"],
+             "Good team setting (QB, blocking, schedule)", "Tough team setting (QB, blocking, schedule)"),
+    "health": (["games_missed"], "Durable", "Missed games"),
+    "coaching": (["oc_changed", "next_oc_prior_pass_rate_over_exp"], "Coaching change helps", "Coaching change hurts"),
+}
+
+
+def explain(model, X, features, threshold=0.25):
+    """Each feature's push on a prediction = weight x the player's standardized value (relative to an
+    average player). Pushes are summed by group. Returns one column per group plus readable summaries."""
+    Xt = model[:-1].transform(X)[:, :len(features)]
+    contrib = pd.DataFrame(Xt * model[-1].coef_[:len(features)], columns=features, index=X.index)
+    out = pd.DataFrame(index=X.index)
+    for g, (cols, _, _) in GROUPS.items():
+        present = [c for c in cols if c in features]
+        if present:
+            out[f"push_{g}"] = contrib[present].sum(axis=1)
+    pushes = out.columns
+    def summarize(row, sign):
+        items = sorted(((row[c], c[5:]) for c in pushes if sign * row[c] > threshold), reverse=sign > 0)
+        return "; ".join(GROUPS[g][1 if sign > 0 else 2] for _, g in items)
+    out["factors_up"] = out.apply(lambda r: summarize(r, 1), axis=1)
+    out["factors_down"] = out.apply(lambda r: summarize(r, -1), axis=1)
+    return out
+
 
 def change_model():
     return make_pipeline(SimpleImputer(strategy="median", add_indicator=True), StandardScaler(), Ridge(alpha=10))
@@ -130,8 +172,11 @@ def run_position(df, pos, cfg, has_coaches):
     now["pred_change_2026"] = cm.predict(now[features])
     now["pred_ppg_2026"] = now["baseline_ppg"] + now["pred_change_2026"]
     now["leap_prob_2026"] = lm.predict_proba(now[features])[:, 1]
+    why = explain(cm, now[features], features)
+    now = now.join(why)
     keep = ["player_id", "name", "position", "team", "next_preseason_team", "age", "ppr_per_game",
-            "baseline_ppg", "pred_change_2026", "pred_ppg_2026", "leap_prob_2026", "next_preseason_rank"]
+            "baseline_ppg", "pred_change_2026", "pred_ppg_2026", "leap_prob_2026", "next_preseason_rank"] \
+        + list(why.columns)
     return now[keep], summary, weights
 
 

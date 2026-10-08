@@ -13,3 +13,6 @@ venv/
 
 # Personal scratch notebooks (not committed)
 scratch/
+
+# Website build output (published by GitHub Actions, not committed)
+site/

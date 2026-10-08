@@ -1,5 +1,7 @@
 # Fantasy Football RD
 
+**Live site:** https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/ (2026 predictions, graded every week)
+
 Player ratings and fantasy point projections built from NFL play-by-play,
 player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 
@@ -15,8 +17,9 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 | 2d. RB and TE jump model walkthroughs | `notebooks/rb_jump_model.ipynb`, `notebooks/te_jump_model.ipynb` | ✅ |
 | 3. Jump models for WR, TE, RB: predicted PPG change + leap probability, backtested 2019-2024 | `jump_model.py` → `predictions/` | ✅ |
 | 4. Grade 2026 predictions against actual results as the season goes | `grade_2026.py` | ✅ (in progress) |
-| 5. Website | — | planned |
-| 6. Rookie projections from college data | — | planned |
+| 5. Website: predictions, per-player explanations, live grading | `build_site.py` → GitHub Pages | ✅ |
+| 6. Weekly automation: grade + rebuild + publish every Tuesday | `.github/workflows/weekly-update.yml` | ✅ |
+| 7. Rookie projections from college data | — | planned |
 
 ## Setup
 
@@ -29,6 +32,7 @@ python collect_coordinators.py   # ~25 min the first time; output is committed i
 python build_player_seasons.py   # -> data/processed/player_seasons.parquet
 python jump_model.py             # -> predictions/2026_jump_predictions.csv + backtest_summary.csv
 python grade_2026.py             # compare predictions with 2026 results so far
+python build_site.py             # -> site/index.html (open it in a browser to preview)
 ```
 
 ## Evaluation
