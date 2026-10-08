@@ -1,0 +1,4 @@
+run_date,through_week,position,players,naive_avg_miss_ppg,model_avg_miss_ppg,corr_pred_vs_actual_change,top20pct_pred_actual_change,others_actual_change
+2026-10-07,4,RB,57,3.858,3.992,0.204,-0.056,-0.267
+2026-10-07,4,TE,67,2.456,2.707,0.022,-0.538,-0.007
+2026-10-07,4,WR,108,3.98,3.641,0.364,2.162,-0.768

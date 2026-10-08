@@ -1,0 +1,4 @@
+position,seasons_tested,players_tested,leap_rate,naive_avg_miss_ppg,model_avg_miss_ppg,corr_pred_vs_actual,top10pct_actual_change,bottom10pct_actual_change,leap_auc,coaching_features
+WR,2019-2024,659,0.044,2.856,2.571,0.417,1.95,-3.066,0.763,True
+TE,2019-2024,373,0.04,2.142,1.988,0.424,1.605,-2.797,0.82,True
+RB,2019-2024,361,0.072,3.438,3.061,0.406,1.943,-3.54,0.711,True

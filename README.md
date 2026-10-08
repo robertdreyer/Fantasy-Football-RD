@@ -11,8 +11,9 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 | 1b. Coaching staffs (HC/OC/DC by team-season) from Pro Football Reference | `collect_coordinators.py` → `reference/coordinators.csv` | ✅ |
 | 2. Build one player-season table: production, per-route efficiency, coverage splits, red-zone role, health, depth charts, vacated targets, contracts, schedule, coaching, market rankings | `build_player_seasons.py` | ✅ |
 | 2b. First analysis: what WRs look like the year before a breakout | `notebooks/wr_breakouts.ipynb` | ✅ |
-| 3. Feature building (QB, OC tendencies, opposing DC, injury risk, separation, explosive runs) | — | planned |
-| 4. Baseline + projection model, backtested vs. actual results | — | planned |
+| 2c. WR jump model walkthrough (JSN case study) | `notebooks/wr_jump_model.ipynb` | ✅ |
+| 3. Jump models for WR, TE, RB: predicted PPG change + leap probability, backtested 2019-2024 | `jump_model.py` → `predictions/` | ✅ |
+| 4. Grade 2026 predictions against actual results as the season goes | `grade_2026.py` | ✅ (in progress) |
 | 5. Website | — | planned |
 | 6. Rookie projections from college data | — | planned |
 
@@ -25,6 +26,8 @@ pip install -r requirements.txt
 python collect_data.py           # raw data into data/raw/ (not committed)
 python collect_coordinators.py   # ~25 min the first time; output is committed in reference/
 python build_player_seasons.py   # -> data/processed/player_seasons.parquet
+python jump_model.py             # -> predictions/2026_jump_predictions.csv + backtest_summary.csv
+python grade_2026.py             # compare predictions with 2026 results so far
 ```
 
 ## Evaluation
@@ -32,6 +35,13 @@ python build_player_seasons.py   # -> data/processed/player_seasons.parquet
 All inputs stop at the end of the 2025 season, plus 2026 information known before kickoff
 (preseason rankings, preseason depth charts, schedule matchups, coaching staffs).
 The 2026 season is a true holdout used to grade the projections.
+
+## Results so far
+
+Backtest (each season predicted using only earlier seasons, 2019-2024): the models beat
+"he'll repeat his baseline" at every position. Players in the top 10% of predicted change gained
+about +1.6 to +2.0 PPR points per game on average; the bottom 10% lost about 2.8 to 3.5.
+Details: `predictions/backtest_summary.csv`. Live 2026 grading: `predictions/2026_grade_summary.csv`.
 
 ## Data sources
 
