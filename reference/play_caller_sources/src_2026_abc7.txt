@@ -1,0 +1,33 @@
+SOURCE: ESPN via ABC7 Los Angeles, "Who calls plays for every NFL team in 2026?" https://abc7.com/post/calls-plays-every-nfl-team-2026-what-know/19783946/
+BUF|Joe Brady|HC
+MIA|Bobby Slowik|OC
+NE|Josh McDaniels|OC
+NYJ|Frank Reich|OC
+BAL|Declan Doyle|OC|first-time
+CIN|Zac Taylor|HC
+CLE|Todd Monken|HC
+PIT|Mike McCarthy|HC
+HOU|Nick Caley|OC
+IND|Shane Steichen|HC
+JAX|Liam Coen|HC
+TEN|Brian Daboll|OC
+DEN|Davis Webb|OC|first-time(likely)
+KC|Andy Reid|HC|OC Eric Bieniemy
+LV|Klint Kubiak|HC
+LAC|Mike McDaniel|OC
+DAL|Brian Schottenheimer|HC
+NYG|Matt Nagy|OC
+PHI|Sean Mannion|OC|first-time
+WAS|David Blough|OC|first-time
+CHI|Ben Johnson|HC
+DET|Drew Petzing|OC
+GB|Matt LaFleur|HC
+MIN|Kevin O'Connell|HC
+ATL|Tommy Rees|OC
+CAR|Brad Idzik|OC|first-time
+NO|Kellen Moore|HC
+TB|Zac Robinson|OC
+ARI|Mike LaFleur|HC
+LA|Sean McVay|HC
+SF|Kyle Shanahan|HC|OC Klay Kubiak (filling in during Shanahan recovery)
+SEA|Brian Fleury|OC|first-time

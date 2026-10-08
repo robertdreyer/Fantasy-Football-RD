@@ -1,0 +1,33 @@
+SOURCE: ESPN via ABC11, "Who calls plays for every NFL team in 2024?" https://abc11.com/post/calls-plays-every-nfl-team-2024-what-know/15246862/
+BUF|Joe Brady|OC
+MIA|Mike McDaniel|HC
+NE|Alex Van Pelt|OC
+NYJ|Nathaniel Hackett|OC
+BAL|Todd Monken|OC
+CIN|Zac Taylor|HC|OC Dan Pitcher
+CLE|Kevin Stefanski|HC|OC Ken Dorsey
+PIT|Arthur Smith|OC
+HOU|Bobby Slowik|OC
+IND|Shane Steichen|HC
+JAX|Press Taylor|OC
+TEN|Brian Callahan|HC
+DEN|Sean Payton|HC
+KC|Andy Reid|HC
+LV|Luke Getsy|OC
+LAC|Greg Roman|OC
+DAL|Mike McCarthy|HC
+NYG|Brian Daboll|HC|OC Mike Kafka
+PHI|Kellen Moore|OC
+WAS|Kliff Kingsbury|OC
+CHI|Shane Waldron|OC
+DET|Ben Johnson|OC
+GB|Matt LaFleur|HC
+MIN|Kevin O'Connell|HC
+ATL|Zac Robinson|OC
+CAR|Dave Canales|HC
+NO|Klint Kubiak|OC
+TB|Liam Coen|OC
+ARI|Drew Petzing|OC
+LA|Sean McVay|HC
+SF|Kyle Shanahan|HC
+SEA|Ryan Grubb|OC

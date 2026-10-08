@@ -1,0 +1,33 @@
+SOURCE: ESPN via ABC7 Los Angeles, "Who calls plays for every NFL team in 2025?" https://abc7.com/post/calls-plays-every-nfl-team-2025-what-know/17777918/
+ARI|Drew Petzing|OC
+ATL|Zac Robinson|OC
+BAL|Todd Monken|OC
+BUF|Joe Brady|OC
+CAR|Dave Canales|HC
+CHI|Ben Johnson|HC|OC Declan Doyle
+CIN|Zac Taylor|HC|OC Dan Pitcher
+CLE|Kevin Stefanski|HC
+DAL|Brian Schottenheimer|HC
+DEN|Sean Payton|HC
+DET|John Morton|OC|first-time
+GB|Matt LaFleur|HC
+HOU|Nick Caley|OC|first-time
+IND|Shane Steichen|HC
+JAX|Liam Coen|HC
+KC|Andy Reid|HC|OC Matt Nagy
+LV|Chip Kelly|OC
+LAC|Greg Roman|OC
+LA|Sean McVay|HC
+MIA|Mike McDaniel|HC
+MIN|Kevin O'Connell|HC
+NE|Josh McDaniels|OC
+NO|Kellen Moore|HC
+NYG|Mike Kafka|OC
+NYJ|Tanner Engstrand|OC|first-time
+PHI|Kevin Patullo|OC|first-time
+PIT|Arthur Smith|OC
+SF|Kyle Shanahan|HC|OC Klay Kubiak
+SEA|Klint Kubiak|OC
+TB|Josh Grizzard|OC|first-time
+TEN|Brian Callahan|HC
+WAS|Kliff Kingsbury|OC

@@ -1,0 +1,33 @@
+SOURCE: Yardbarker, "Ranking the offensive play-caller for each NFL team" (Sep 2021) https://www.yardbarker.com/nfl/articles/ranking_the_offensive_play_caller_for_each_nfl_team/s1__35857394
+KC|Andy Reid|HC
+NO|Sean Payton|HC
+LA|Sean McVay|HC
+SF|Kyle Shanahan|HC
+GB|Matt LaFleur|HC
+NE|Josh McDaniels|OC
+IND|Frank Reich|HC
+CLE|Kevin Stefanski|HC
+LV|Jon Gruden|HC
+ATL|Arthur Smith|HC
+TB|Byron Leftwich|OC
+BAL|Greg Roman|OC
+CHI|Matt Nagy|HC
+JAX|Darrell Bevell|OC
+DAL|Kellen Moore|OC
+ARI|Kliff Kingsbury|HC
+BUF|Brian Daboll|OC
+NYG|Jason Garrett|OC
+CAR|Joe Brady|OC
+WAS|Scott Turner|OC
+LAC|Joe Lombardi|OC
+DEN|Pat Shurmur|OC
+CIN|Zac Taylor|HC
+PHI|Nick Sirianni|HC
+DET|Anthony Lynn|OC
+TEN|Todd Downing|OC
+HOU|Tim Kelly|OC
+MIA|George Godsey / Eric Studesville|co-OC
+PIT|Matt Canada|OC
+MIN|Klint Kubiak|OC
+NYJ|Mike LaFleur|OC
+SEA|Shane Waldron|OC

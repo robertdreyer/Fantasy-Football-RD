@@ -1,0 +1,7 @@
+SOURCE: PFF, "Ranking the NFL's best offensive play callers ahead of the 2022 season" (top 6 only) https://www.pff.com/news/nfl-ranking-best-offensive-play-callers-2022
+KC|Andy Reid|HC
+DAL|Kellen Moore|OC
+TB|Byron Leftwich|OC
+SF|Kyle Shanahan|HC
+LA|Sean McVay|HC
+GB|Matt LaFleur|HC

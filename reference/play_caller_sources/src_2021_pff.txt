@@ -1,0 +1,7 @@
+SOURCE: PFF, "Ranking the NFL's best offensive play callers ahead of the 2021 season" (top 6 only) https://www.pff.com/news/nfl-ranking-best-offensive-play-callers-entering-2021-season
+GB|Matt LaFleur|HC
+BUF|Brian Daboll|OC
+KC|Andy Reid|HC
+LV|Jon Gruden|HC
+CAR|Joe Brady|OC
+TB|Byron Leftwich|OC

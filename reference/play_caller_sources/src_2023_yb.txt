@@ -1,0 +1,33 @@
+SOURCE: Yardbarker, "Ranking the offensive play-caller for each NFL team" (Jan 2024, covers 2023) https://www.yardbarker.com/nfl/articles/ranking_the_offensive_play_caller_for_each_nfl_team_011224/s1__39276975
+KC|Andy Reid|HC
+LA|Sean McVay|HC
+SF|Kyle Shanahan|HC
+MIA|Mike McDaniel|HC
+JAX|Doug Pederson|HC
+DEN|Sean Payton|HC
+CIN|Zac Taylor|HC
+GB|Matt LaFleur|HC
+DET|Ben Johnson|OC
+CAR|Frank Reich / Thomas Brown|HC/OC
+ATL|Arthur Smith|HC
+IND|Shane Steichen|HC
+LAC|Kellen Moore|OC
+NYG|Mike Kafka / Brian Daboll|OC/HC
+MIN|Kevin O'Connell|HC
+BUF|Joe Brady|OC
+SEA|Shane Waldron|OC
+LV|Josh McDaniels|HC
+NE|Bill O'Brien|OC
+WAS|Eric Bieniemy|OC
+BAL|Todd Monken|OC
+DAL|Mike McCarthy|HC
+NO|Pete Carmichael Jr.|OC
+CLE|Kevin Stefanski|HC
+TEN|Tim Kelly|OC
+HOU|Bobby Slowik|OC
+PHI|Brian Johnson|OC
+TB|Dave Canales|OC
+ARI|Drew Petzing|OC
+CHI|Luke Getsy|OC
+NYJ|Nathaniel Hackett|OC
+PIT|Matt Canada|OC
