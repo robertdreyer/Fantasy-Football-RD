@@ -1,7 +1,7 @@
 # `player_seasons` column guide
 
 Built by `build_player_seasons.py` → `data/processed/player_seasons.parquet` (and `.csv`).
-One row per player (WR, TE, RB) per regular season, 2016–2025. ~5,100 rows × 137 columns (145 once coordinators are added).
+One row per player (WR, TE, RB) per regular season, 2016–2025. ~5,100 rows × 165 columns.
 
 **Data through 2025 only.** 2026 inputs are limited to things known before the Sept. 9 kickoff:
 preseason rankings, preseason depth charts, the schedule (matchups only) and coaching staffs.
@@ -25,6 +25,8 @@ They land in the `next_*` columns of 2025 rows. 2026 results are intentionally b
 | `targets_per_game`, `yards_per_target`, `catch_rate` | Receiving rates |
 | `carries`, `rush_yards`, `rush_tds`, `rush_epa`, `carries_per_game`, `yards_per_carry` | Rushing |
 | `runs_10plus`, `runs_20plus`, `runs_40plus`, `explosive_run_rate` | Long runs (rate = 20+ yd runs per carry) |
+| `run_10plus_rate` | Share of carries that gained 10+ yards (chunk runs) |
+| `yac_per_reception` | Yards after the catch per reception |
 | `fumbles_lost` | |
 
 ## Usage and talent
@@ -116,5 +118,27 @@ They land in the `next_*` columns of 2025 rows. 2026 results are intentionally b
 | `next_sos_pass_def_epa`, `next_sos_rush_def_epa` | Next season's opponents' defensive EPA allowed in the season just played. Higher = easier schedule. Weak signal: defenses change year to year |
 | `next_head_coach`, `next_oc`, `next_dc` | Next season's staff on his next team (with coordinators file) |
 | `next_oc_prior_pass_rate_over_exp` | The incoming OC's pass rate over expected in his most recent season as an OC: tendency that travels with the coordinator |
+| `team_carry_share`, `team_target_share_season` | His share of his team's carries / targets this season (among WR, TE, RB) |
+| `next_competition_carry_share`, `next_competition_target_share` | Share of his NEXT team's carries / targets this season held by other players who are still on its preseason depth chart: **returning competition** |
+| `carry_share_gap`, `target_share_gap` | Work not held by returning teammates, minus what he already had (+ = room to grow) |
+| `open_carries_per_game`, `open_targets_per_game` | Carries / targets per game left on his next team after returning teammates' share |
+| `open_carries_vs_current`, `open_targets_vs_current` | Those open amounts minus his current per-game workload |
 | `changed_team` | 1 if his next-preseason team differs from this season's |
 | `oc_changed` | 1 if his offensive coordinator will be different next season |
+
+## Play-callers (from `reference/play_callers.csv`, researched with sources)
+Style numbers describe the offense a caller ran; for next season we use the incoming caller's most
+recent season calling plays (any team), never anything from the season being predicted.
+Coverage is incomplete until 2016, 2017 and 2019 are researched, so the models don't use these yet.
+
+| Column | Meaning |
+|---|---|
+| `play_caller` | Who called his team's offensive plays at the start of this season |
+| `next_play_caller` | Who will call plays for his next-preseason team |
+| `play_caller_changed` | 1 if next season's caller is a different person |
+| `next_caller_first_time` | 1 if the incoming caller has no play-calling seasons in the table |
+| `next_caller_seasons_before` | Play-calling seasons the incoming caller has in the table |
+| `next_caller_pass_rate_over_exp`, `next_caller_dropbacks_per_game` | Incoming caller's pass tendency and pass volume |
+| `next_caller_rb_target_share`, `next_caller_te_target_share`, `next_caller_top_target_share` | How his offense spread targets: to RBs, to TEs, and to its top target |
+| `next_caller_motion_rate`, `next_caller_play_action_rate` | His motion and play-action rates (2022+) |
+| `next_caller_*_shift` | Incoming caller's style minus what the player's team ran this season (+ = more of it) |

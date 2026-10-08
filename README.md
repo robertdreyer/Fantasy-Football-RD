@@ -45,7 +45,7 @@ The 2026 season is a true holdout used to grade the projections.
 
 Backtest (each season predicted using only earlier seasons, 2019-2024): the models beat
 "he'll repeat his baseline" at every position. Players in the top 10% of predicted change gained
-about +1.6 to +2.0 PPR points per game on average; the bottom 10% lost about 2.8 to 3.5.
+about +1.6 to +2.1 PPR points per game on average; the bottom 10% lost about 2.9 to 3.9.
 Details: `predictions/backtest_summary.csv`. Live 2026 grading: `predictions/2026_grade_summary.csv`.
 
 ## Data sources

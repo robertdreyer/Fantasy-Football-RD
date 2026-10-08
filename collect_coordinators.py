@@ -1,105 +1,120 @@
 """
 collect_coordinators.py
-Builds reference/coordinators.csv: head coach, offensive coordinator (OC) and
-defensive coordinator (DC) for every team, 2016-2026, from Pro Football Reference.
+Builds reference/coordinators_wikipedia.csv: head coach, offensive coordinator (OC) and
+defensive coordinator (DC) for every team, 2016-2026, from each team-season's Wikipedia page.
 
-Why a separate script: nflverse doesn't have coordinators, and Pro Football Reference
-limits automated requests (about 20 per minute). This script waits between pages,
-so the first full run takes ~25 minutes. It saves after every page, so if it stops
-you can just run it again and it picks up where it left off.
+Wikipedia is only the FIRST source. Every coordinator change and mid-season change is then
+checked against other sites, and the verified table is saved as reference/coordinators.csv
+(see reference/coordinators_verification.csv for what was checked and where).
 
-The output goes in reference/ (not data/) so it IS committed to GitHub. You can
-open the CSV and fix anything by hand, e.g. a coordinator fired mid-season.
+Uses the official Wikipedia API, about one request per second (~6 minutes for 352 pages).
+Saves after every page, so if it stops you can run it again and it resumes.
 
 Run it:  python collect_coordinators.py
 """
 
 import csv
+import html
 import re
 import time
 from pathlib import Path
 
 import requests
 
-SEASONS = range(2016, 2027)   # 2026 = this season's preseason staff
-WAIT_SECONDS = 4               # stay under PFR's rate limit
-OUT = Path("reference/coordinators.csv")
-OUT.parent.mkdir(exist_ok=True)
+SEASONS = range(2016, 2027)
+WAIT_SECONDS = 1
+OUT = Path("reference/coordinators_wikipedia.csv")
+API = "https://en.wikipedia.org/w/api.php"
+HEADERS = {"User-Agent": "FantasyFootballRD/1.0 (personal research project; robertdreyer12@gmail.com)"}
 
-# nflverse team code -> Pro Football Reference franchise code (constant across relocations)
-PFR_CODES = {
-    "ARI": "crd", "ATL": "atl", "BAL": "rav", "BUF": "buf", "CAR": "car", "CHI": "chi",
-    "CIN": "cin", "CLE": "cle", "DAL": "dal", "DEN": "den", "DET": "det", "GB": "gnb",
-    "HOU": "htx", "IND": "clt", "JAX": "jax", "KC": "kan", "LV": "rai", "LAC": "sdg",
-    "LA": "ram", "MIA": "mia", "MIN": "min", "NE": "nwe", "NO": "nor", "NYG": "nyg",
-    "NYJ": "nyj", "PHI": "phi", "PIT": "pit", "SEA": "sea", "SF": "sfo", "TB": "tam",
-    "TEN": "oti", "WAS": "was",
-}
-FIELDS = ["season", "team", "head_coach", "oc", "dc", "head_coach_id", "oc_id", "dc_id"]
-LABELS = {"head_coach": "Coach", "oc": "Offensive Coordinator", "dc": "Defensive Coordinator"}
+# nflverse code -> Wikipedia team name, by season (relocations and renames)
+def team_name(code, season):
+    special = {
+        "LAC": "San Diego Chargers" if season == 2016 else "Los Angeles Chargers",
+        "LV": "Oakland Raiders" if season <= 2019 else "Las Vegas Raiders",
+        "WAS": ("Washington Redskins" if season <= 2019 else
+                "Washington Football Team" if season <= 2021 else "Washington Commanders"),
+    }
+    names = {
+        "ARI": "Arizona Cardinals", "ATL": "Atlanta Falcons", "BAL": "Baltimore Ravens",
+        "BUF": "Buffalo Bills", "CAR": "Carolina Panthers", "CHI": "Chicago Bears",
+        "CIN": "Cincinnati Bengals", "CLE": "Cleveland Browns", "DAL": "Dallas Cowboys",
+        "DEN": "Denver Broncos", "DET": "Detroit Lions", "GB": "Green Bay Packers",
+        "HOU": "Houston Texans", "IND": "Indianapolis Colts", "JAX": "Jacksonville Jaguars",
+        "KC": "Kansas City Chiefs", "LA": "Los Angeles Rams", "MIA": "Miami Dolphins",
+        "MIN": "Minnesota Vikings", "NE": "New England Patriots", "NO": "New Orleans Saints",
+        "NYG": "New York Giants", "NYJ": "New York Jets", "PHI": "Philadelphia Eagles",
+        "PIT": "Pittsburgh Steelers", "SEA": "Seattle Seahawks", "SF": "San Francisco 49ers",
+        "TB": "Tampa Bay Buccaneers", "TEN": "Tennessee Titans",
+    }
+    return special.get(code) or names[code]
 
 
-def parse_role(html, label):
-    """Return (names, ids) listed after e.g. 'Offensive Coordinator:' on a PFR team page.
-    If a team changed coordinators mid-season, PFR lists more than one; we keep them all,
-    joined with ' / ', in the order PFR shows them."""
-    m = re.search(r"(?<![A-Za-z ])" + re.escape(label) + r":", html)
-    if label == "Coach":   # avoid matching the 'Coordinator' labels
-        m = re.search(r">\s*Coach:", html)
+TEAMS = ["ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", "DET", "GB",
+         "HOU", "IND", "JAX", "KC", "LV", "LAC", "LA", "MIA", "MIN", "NE", "NO", "NYG",
+         "NYJ", "PHI", "PIT", "SEA", "SF", "TB", "TEN", "WAS"]
+FIELDS = ["season", "team", "head_coach", "oc", "dc", "page"]
+LABELS = {"head_coach": "Head coach", "oc": "Offensive coordinator", "dc": "Defensive coordinator"}
+
+
+def infobox_value(page_html, label):
+    """Text of the infobox row whose label is `label`. Several people (mid-season change)
+    are joined with ' / ' in the order Wikipedia lists them."""
+    m = re.search(r"<th[^>]*>\s*(?:<[^>]+>)*\s*" + re.escape(label) + r"\s*(?:<[^>]+>)*\s*</th>\s*<td[^>]*>(.*?)</td>",
+                  page_html, re.S | re.I)
     if not m:
-        return "", ""
-    end = html.find("</p>", m.end())
-    chunk = html[m.end(): end if end != -1 else m.end() + 600]
-    links = re.findall(r'href="(?:https://www\.pro-football-reference\.com)?/coaches/([^"/]+)\.htm"[^>]*>([^<]+)</a>', chunk)
-    if links:
-        return " / ".join(n.strip() for _, n in links), " / ".join(i for i, _ in links)
-    text = re.sub(r"<[^>]+>", "", chunk)
-    text = re.sub(r"\(\d+-\d+-\d+\)", "", text)          # drop W-L record after head coach
-    return text.strip(" :\n\t"), ""
+        return ""
+    cell = re.sub(r"<br\s*/?>|</li>|</p>", "\n", m.group(1))
+    cell = re.sub(r"<sup.*?</sup>", "", cell, flags=re.S)        # footnote markers
+    cell = html.unescape(re.sub(r"<[^>]+>", "", cell))
+    people = []
+    for line in cell.split("\n"):
+        line = re.sub(r"\[\d+\]|\([^)]*\)", "", line).strip(" ,; ")   # drop [1] and "(interim)"
+        if line:
+            people.append(line)
+    return " / ".join(people)
 
 
 def main():
+    OUT.parent.mkdir(exist_ok=True)
     done = set()
     if OUT.exists():
         with OUT.open(newline="", encoding="utf-8") as f:
             done = {(int(r["season"]), r["team"]) for r in csv.DictReader(f)}
+    todo = [(s, t) for s in SEASONS for t in TEAMS if (s, t) not in done]
+    print(f"{len(done)} already saved, {len(todo)} to fetch (~{len(todo) * (WAIT_SECONDS + 0.5) / 60:.0f} min)")
 
     new_file = not OUT.exists()
-    session = requests.Session()
-    session.headers["User-Agent"] = "Mozilla/5.0 (personal fantasy football research project)"
-
     with OUT.open("a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         if new_file:
             writer.writeheader()
-        todo = [(s, t) for s in SEASONS for t in PFR_CODES if (s, t) not in done]
-        print(f"{len(done)} already saved, {len(todo)} to fetch (~{len(todo) * WAIT_SECONDS // 60} min)")
-
         for i, (season, team) in enumerate(todo, 1):
-            url = f"https://www.pro-football-reference.com/teams/{PFR_CODES[team]}/{season}.htm"
-            resp = session.get(url, timeout=30)
-            if resp.status_code == 429:
-                print("Rate-limited by PFR. Wait an hour, then run the script again to resume.")
-                return
-            if resp.status_code != 200:
-                print(f"  {season} {team}: HTTP {resp.status_code}, skipped")
+            title = f"{season} {team_name(team, season)} season"
+            params = {"action": "parse", "page": title, "prop": "text", "section": 0,
+                      "format": "json", "formatversion": 2, "redirects": 1}
+            resp = requests.get(API, params=params, headers=HEADERS, timeout=30)
+            data = resp.json() if resp.ok else {}
+            if "parse" not in data:
+                print(f"  {title}: page not found ({data.get('error', {}).get('info', resp.status_code)}), skipped")
                 time.sleep(WAIT_SECONDS)
                 continue
-
-            row = {"season": season, "team": team}
+            page_html = data["parse"]["text"]
+            row = {"season": season, "team": team, "page": title}
             for key, label in LABELS.items():
-                names, ids = parse_role(resp.text, label)
-                row[key], row[f"{key}_id"] = names, ids
-            if i == 1 and not row["oc"] and not row["dc"]:
-                print("Couldn't find coordinators on the first page. PFR's layout may have changed.\n"
-                      f"Open {url} to check, and share this message so the parser can be fixed.")
+                row[key] = infobox_value(page_html, label)
+            if i == 1 and not (row["oc"] or row["head_coach"]):
+                print("Couldn't read the infobox on the first page; the page layout may differ from expected.\n"
+                      "Paste this output so the parser can be fixed:\n", page_html[:1500])
                 return
             writer.writerow(row)
             f.flush()
-            print(f"  [{i}/{len(todo)}] {season} {team}: OC {row['oc'] or '?'} | DC {row['dc'] or '?'}")
+            print(f"  [{i}/{len(todo)}] {season} {team}: HC {row['head_coach'] or '?'} | "
+                  f"OC {row['oc'] or '?'} | DC {row['dc'] or '?'}")
             time.sleep(WAIT_SECONDS)
 
-    print(f"\nDone -> {OUT}")
+    print(f"\nDone -> {OUT}\nNext: tell Claude it's ready, so the changes can be cross-checked "
+          "against other sources before the data is used.")
 
 
 if __name__ == "__main__":

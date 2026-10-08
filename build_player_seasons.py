@@ -38,6 +38,7 @@ POSITIONS = ["WR", "TE", "RB"]
 KICKOFF_2026 = "2026-09-09"
 
 COORDINATORS = Path("reference/coordinators.csv")   # made by collect_coordinators.py
+PLAY_CALLERS = Path("reference/play_callers.csv")   # researched: who called the offensive plays
 
 # Older team codes (FantasyPros, old depth charts) -> nflverse team codes
 TEAM_FIX = {"JAC": "JAX", "LAR": "LA", "OAK": "LV", "SD": "LAC", "STL": "LA"}
@@ -91,6 +92,8 @@ box["yards_per_target"] = per(box["rec_yards"], box["targets"])
 box["yards_per_carry"] = per(box["rush_yards"], box["carries"])
 box["catch_rate"] = per(box["receptions"], box["targets"])
 box["explosive_run_rate"] = per(box["runs_20plus"], box["carries"])
+box["run_10plus_rate"] = per(box["runs_10plus"], box["carries"])          # chunk runs
+box["yac_per_reception"] = per(box["yac"], box["receptions"])            # yards after the catch
 
 
 # ===========================================================================
@@ -466,6 +469,16 @@ vacated = moves.groupby(["team", "season"]).apply(
 # Only seasons where next preseason depth charts exist can be measured
 vacated = vacated[vacated["season"] + 1 <= 2026]
 
+# Competition on his NEXT team: the share of that team's carries/targets this season
+# that belonged to OTHER players who are still on its depth chart next preseason.
+# Example: Kenneth Walker shared Seattle's backfield in 2025 (about half the carries),
+# then moved to a Kansas City backfield whose returning backs had few carries.
+team_tot = box.groupby(["team", "season"])[["carries", "targets"]].sum().rename(
+    columns={"carries": "t_car", "targets": "t_tgt"})
+retained = (moves[~moves["left"]].groupby(["team", "season"])[["carries", "targets"]].sum()
+            .rename(columns={"carries": "kept_car", "targets": "kept_tgt"}))
+team_comp = team_tot.join(retained, how="left").fillna(0).reset_index()
+
 # Contracts: the deal in force for the following season (OverTheCap)
 con = pd.read_parquet(RAW / "contracts.parquet",
                       columns=["gsis_id", "year_signed", "years", "apy_cap_pct", "guaranteed"])
@@ -502,6 +515,45 @@ sos = (sched.merge(defense.rename(columns={"season": "prev_season"}), on=["opp",
                         "def_epa_per_rush_allowed": "next_sos_rush_def_epa"})
        .reset_index())
 sos["season"] -= 1     # schedule for season N+1 lands on the season-N row
+
+# --- Play-callers: who called the offense, and the style of offense he ran.
+# A team-season's "style" is measured from play-by-play; a caller's style is the style of the
+# offense he called. For next season we look up the INCOMING caller's most recent style
+# (any team, seasons up to and including this one), so nothing from the future is used.
+style = pd.concat([
+    team.set_index(["team", "season"])[["team_pass_rate_over_exp", "team_dropbacks_per_game"]],
+], axis=1)
+pos_map = box.drop_duplicates("player_id").set_index("player_id")["position"]
+tg_pos = tg.assign(pos=tg["receiver_player_id"].map(pos_map))
+tshare = tg_pos.groupby(["posteam", "season"])["pos"].value_counts(normalize=True).unstack(fill_value=0)
+top = (tg_pos.groupby(["posteam", "season", "receiver_player_id"]).size()
+       .groupby(level=[0, 1]).apply(lambda x: x.max() / x.sum()))
+style = style.join(pd.DataFrame({"rb_target_share": tshare.get("RB"), "te_target_share": tshare.get("TE"),
+                                 "top_target_share": top}).rename_axis(["team", "season"]), how="left")
+style = style.join(scheme.set_index(["team", "season"])[["team_motion_rate", "team_play_action_rate"]], how="left")
+style = style.rename(columns={"team_pass_rate_over_exp": "pass_rate_over_exp", "team_dropbacks_per_game": "dropbacks_per_game",
+                              "team_motion_rate": "motion_rate", "team_play_action_rate": "play_action_rate"}).reset_index()
+STYLE_COLS = ["pass_rate_over_exp", "dropbacks_per_game", "rb_target_share", "te_target_share",
+              "top_target_share", "motion_rate", "play_action_rate"]
+
+callers = None
+if PLAY_CALLERS.exists():
+    callers = pd.read_csv(PLAY_CALLERS)[["season", "team", "play_caller"]].dropna()
+    caller_hist = callers.merge(style, on=["team", "season"], how="inner")   # seasons with play-by-play
+
+
+    def caller_style_before(names_seasons):
+        """For each (caller, season S), his most recent style from seasons < S, plus seasons of experience."""
+        out = []
+        for (name, S) in names_seasons:
+            h = caller_hist[(caller_hist["play_caller"] == name) & (caller_hist["season"] < S)]
+            if len(h):
+                last = h.sort_values("season").iloc[-1]
+                out.append({"play_caller": name, "season_called": S, "caller_seasons_before": len(h),
+                            **{f"caller_{c}": last[c] for c in STYLE_COLS}})
+            else:
+                out.append({"play_caller": name, "season_called": S, "caller_seasons_before": 0})
+        return pd.DataFrame(out)
 
 # --- Coordinators (optional until reference/coordinators.csv exists)
 coords = None
@@ -601,8 +653,58 @@ df = df.merge(vacated.rename(columns={"team": "next_preseason_team",
                                       "vacated_carry_share": "next_team_vacated_carry_share"}),
               on=["next_preseason_team", "season"], how="left")
 df = df.merge(contract_for(df), on=["player_id", "season"], how="left")
+# Own share of his team's carries/targets this season (players at WR/TE/RB)
+df = df.merge(team_tot.reset_index(), on=["team", "season"], how="left")
+df["team_carry_share"] = per(df["carries"], df["t_car"])
+df["team_target_share_season"] = per(df["targets"], df["t_tgt"])
+df = df.drop(columns=["t_car", "t_tgt"])
+
+# Competition waiting on his next team (his own numbers excluded if he stays)
+nc = team_comp.rename(columns={"team": "next_preseason_team"})
+df = df.merge(nc, on=["next_preseason_team", "season"], how="left")
+stays = df["next_preseason_team"] == df["team"]
+kept_car = df["kept_car"] - np.where(stays, df["carries"], 0)
+kept_tgt = df["kept_tgt"] - np.where(stays, df["targets"], 0)
+df["next_competition_carry_share"] = per(kept_car.clip(lower=0), df["t_car"])
+df["next_competition_target_share"] = per(kept_tgt.clip(lower=0), df["t_tgt"])
+# Room to grow: work NOT held by returning teammates, minus what he already had
+df["carry_share_gap"] = (1 - df["next_competition_carry_share"]) - df["team_carry_share"]
+# Carries per game left over on his next team after returning teammates take their share,
+# compared with what he got this season (+ = room for a bigger workload)
+games_pg = pbp.groupby(["posteam", "season"])["game_id"].nunique()
+df["next_team_games"] = [games_pg.get((t, s), np.nan) for t, s in zip(df["next_preseason_team"], df["season"])]
+df["open_carries_per_game"] = (df["t_car"] - kept_car.clip(lower=0)) / df["next_team_games"]
+df["open_carries_vs_current"] = df["open_carries_per_game"] - df["carries_per_game"]
+df["open_targets_per_game"] = (df["t_tgt"] - kept_tgt.clip(lower=0)) / df["next_team_games"]
+df["open_targets_vs_current"] = df["open_targets_per_game"] - df["targets_per_game"]
+df = df.drop(columns=["next_team_games"])
+df["target_share_gap"] = (1 - df["next_competition_target_share"]) - df["team_target_share_season"]
+df = df.drop(columns=["t_car", "t_tgt", "kept_car", "kept_tgt"])
 # Higher = easier schedule (opponents allowed more EPA last year)
 df = df.merge(sos.rename(columns={"team": "next_preseason_team"}), on=["next_preseason_team", "season"], how="left")
+
+if callers is not None:
+    # This season's caller for his team, and next season's caller for his next team
+    df = df.merge(callers.rename(columns={"play_caller": "play_caller"}), on=["team", "season"], how="left")
+    nxt_c = callers.assign(season=callers["season"] - 1).rename(
+        columns={"team": "next_preseason_team", "play_caller": "next_play_caller"})
+    df = df.merge(nxt_c, on=["next_preseason_team", "season"], how="left")
+    df["play_caller_changed"] = np.where(df["play_caller"].isna() | df["next_play_caller"].isna(), np.nan,
+                                         (df["play_caller"] != df["next_play_caller"]).astype(float))
+    pairs = df.loc[df["next_play_caller"].notna(), ["next_play_caller", "season"]].drop_duplicates()
+    hist = caller_style_before([(n, s + 1) for n, s in pairs.itertuples(index=False)])
+    hist = hist.rename(columns={"play_caller": "next_play_caller"}).assign(season=lambda x: x["season_called"] - 1)
+    hist = hist.drop(columns=["season_called"]).add_prefix("next_").rename(
+        columns={"next_next_play_caller": "next_play_caller", "next_season": "season"})
+    df = df.merge(hist, on=["next_play_caller", "season"], how="left")
+    df["next_caller_first_time"] = np.where(df["next_play_caller"].isna(), np.nan,
+                                            (df["next_caller_seasons_before"] == 0).astype(float))
+    # How different the incoming caller's style is from what his team ran this season
+    cur = style.rename(columns={c: f"cur_{c}" for c in STYLE_COLS})
+    df = df.merge(cur, on=["team", "season"], how="left")
+    for c in ["pass_rate_over_exp", "rb_target_share", "te_target_share", "top_target_share"]:
+        df[f"next_caller_{c}_shift"] = df[f"next_caller_{c}"] - df[f"cur_{c}"]
+    df = df.drop(columns=[f"cur_{c}" for c in STYLE_COLS])
 
 if coords is not None:
     nc = coords.assign(season=coords["season"] - 1).rename(

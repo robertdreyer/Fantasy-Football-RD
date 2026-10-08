@@ -20,6 +20,7 @@ are added automatically.
 Run it:  python jump_model.py
 """
 
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -39,20 +40,26 @@ TRACK_RECORD = ["baseline_ppg", "ppr_per_game", "second_half_trend"]
 CAREER = ["age", "years_exp", "draft_pick_filled"]
 NEXT_SEASON = ["next_preseason_depth_tier", "depth_promotion", "changed_team"]
 ENVIRONMENT = ["qb_epa_per_dropback", "team_pass_rate_over_exp", "games_missed"]
-COACHING = ["oc_changed", "next_oc_prior_pass_rate_over_exp"]     # used only if coordinators exist
+# Play-caller features (from reference/play_callers.csv). Switched OFF until the research covers
+# every season 2016-2026: with 2016, 2017 and 2019 still missing, early backtest seasons have no
+# caller data to learn from, and a preliminary test was mixed (slightly better for WRs, worse for RBs).
+USE_PLAY_CALLER_FEATURES = False
+COACHING = ["play_caller_changed", "next_caller_first_time", "next_caller_pass_rate_over_exp_shift"]
 
 # What counts as a fantasy-relevant "big leap", and who is eligible, per position.
 POSITIONS = {
     "WR": dict(
         features=TRACK_RECORD + CAREER + NEXT_SEASON + ENVIRONMENT + [
             "tprr", "yprr", "fp_over_expected_per_game", "adot", "target_share", "route_participation",
-            "xfp_per_game", "rz_target_share", "next_team_vacated_target_share", "next_sos_pass_def_epa"],
+            "xfp_per_game", "rz_target_share", "next_team_vacated_target_share", "next_sos_pass_def_epa",
+            "avg_yac_above_expectation"],                       # yards after catch vs. expected (NGS)
         eligible=lambda d: (d["games"] >= 6) & (d["routes"] >= 100),
         leap_gain=4, leap_floor=14),
     "TE": dict(
         features=TRACK_RECORD + CAREER + NEXT_SEASON + ENVIRONMENT + [
             "tprr", "yprr", "fp_over_expected_per_game", "target_share", "route_participation",
-            "xfp_per_game", "rz_target_share", "next_team_vacated_target_share", "next_sos_pass_def_epa"],
+            "xfp_per_game", "rz_target_share", "next_team_vacated_target_share", "next_sos_pass_def_epa",
+            "yac_per_reception", "next_competition_target_share"],
         eligible=lambda d: (d["games"] >= 6) & (d["routes"] >= 100),
         leap_gain=3, leap_floor=11),          # TEs score less, so a smaller leap counts
     "RB": dict(
@@ -61,7 +68,8 @@ POSITIONS = {
             "fp_over_expected_per_game", "explosive_run_rate", "yac_per_carry", "ryoe_per_carry",
             "rz_carry_share", "gl_carry_share", "tprr",
             "next_team_vacated_carry_share", "next_team_vacated_target_share",
-            "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate", "next_sos_rush_def_epa"],
+            "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate", "next_sos_rush_def_epa",
+            "run_10plus_rate", "yac_per_reception", "lead_back_opening"],
         eligible=lambda d: (d["games"] >= 6) & ((d["carries"] + d["targets"]) >= 50),
         leap_gain=4, leap_floor=14),
 }
@@ -75,18 +83,21 @@ GROUPS = {
     "usage_efficiency": (["tprr", "yprr", "fp_over_expected_per_game", "adot", "target_share",
                           "route_participation", "xfp_per_game", "rz_target_share", "carries_per_game",
                           "targets_per_game", "explosive_run_rate", "yac_per_carry", "ryoe_per_carry",
-                          "rz_carry_share", "gl_carry_share"],
-                         "Strong usage and efficiency", "Weaker usage and efficiency profile"),
+                          "rz_carry_share", "gl_carry_share", "run_10plus_rate", "yac_per_reception",
+                          "avg_yac_above_expectation"],
+                         "Strong usage, efficiency and big-play ability", "Weaker usage and efficiency profile"),
     "age_draft": (["age", "years_exp", "draft_pick_filled"],
                   "Favorable age and draft capital", "Less favorable age and draft capital"),
     "opportunity": (["next_team_vacated_target_share", "next_team_vacated_carry_share",
-                     "next_preseason_depth_tier", "depth_promotion", "changed_team"],
+                     "next_preseason_depth_tier", "depth_promotion", "changed_team",
+                     "next_competition_target_share", "lead_back_opening"],
                     "Opportunity opening up next season", "Less opportunity next season"),
     "team": (["qb_epa_per_dropback", "team_pass_rate_over_exp", "next_sos_pass_def_epa", "next_sos_rush_def_epa",
               "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate"],
              "Good team setting (QB, blocking, schedule)", "Tough team setting (QB, blocking, schedule)"),
     "health": (["games_missed"], "Durable", "Missed games"),
-    "coaching": (["oc_changed", "next_oc_prior_pass_rate_over_exp"], "Coaching change helps", "Coaching change hurts"),
+    "coaching": (["play_caller_changed", "next_caller_first_time", "next_caller_pass_rate_over_exp_shift"],
+                 "Play-caller change helps", "Play-caller change hurts"),
 }
 
 
@@ -127,6 +138,13 @@ def prepare(df, pos):
     d["baseline_ppg"] = (d["ppr"] + d["prev_ppr"].fillna(0)) / (d["games"] + d["prev_games"].fillna(0))
     d["draft_pick_filled"] = d["draft_pick"].fillna(300)
     d["depth_promotion"] = d["preseason_depth_tier"] - d["next_preseason_depth_tier"]
+    # "Lead back opening": he shared his backfield this season (<55% of team carries), is atop his
+    # next team's depth chart, and returning teammates there had <25% of its carries.
+    # (Kenneth Walker, Seattle 2025 -> Kansas City 2026, is the textbook case.)
+    d["lead_back_opening"] = np.where(
+        d["next_competition_carry_share"].isna(), np.nan,
+        ((d["next_preseason_depth_tier"] == 1) & (d["team_carry_share"] < 0.55)
+         & (d["next_competition_carry_share"] < 0.25)).astype(float))
     return d
 
 
@@ -183,9 +201,9 @@ def run_position(df, pos, cfg, has_coaches):
 def main():
     OUT.mkdir(exist_ok=True)
     df = pd.read_parquet(DATA)
-    has_coaches = "oc_changed" in df.columns and df["oc_changed"].notna().any()
+    has_coaches = USE_PLAY_CALLER_FEATURES and "play_caller_changed" in df.columns
     if not has_coaches:
-        print("No coordinator data yet: models run without coaching features.")
+        print("Play-caller features are off (see USE_PLAY_CALLER_FEATURES): models run without coaching features.")
 
     preds, summaries, weights = [], [], []
     for pos, cfg in POSITIONS.items():
@@ -199,6 +217,10 @@ def main():
     preds = pd.concat(preds).sort_values("pred_ppg_2026", ascending=False)
     preds["position_rank_pred"] = preds.groupby("position")["pred_ppg_2026"].rank(ascending=False, method="first").astype(int)
     preds.round(3).to_csv(OUT / "2026_jump_predictions.csv", index=False)
+    # Keep a dated copy of every version, so earlier predictions stay on record
+    archive = OUT / "archive"
+    archive.mkdir(exist_ok=True)
+    preds.round(3).to_csv(archive / f"2026_jump_predictions_{date.today().isoformat()}.csv", index=False)
     pd.DataFrame(summaries).round(3).to_csv(OUT / "backtest_summary.csv", index=False)
     pd.concat(weights, axis=1).round(3).to_csv(OUT / "model_weights.csv")
     print(f"\nSaved {len(preds)} 2026 predictions -> {OUT / '2026_jump_predictions.csv'}")
