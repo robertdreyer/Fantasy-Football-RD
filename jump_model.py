@@ -32,7 +32,6 @@ from sklearn.preprocessing import StandardScaler
 
 DATA = Path("data/processed/player_seasons.parquet")
 OUT = Path("predictions")
-OUT.mkdir(exist_ok=True)
 FIRST_TEST_SEASON, LAST_LABELED_SEASON, PREDICT_FROM = 2019, 2024, 2025
 
 # Shared building blocks -----------------------------------------------------
@@ -137,10 +136,11 @@ def run_position(df, pos, cfg, has_coaches):
 
 
 def main():
+    OUT.mkdir(exist_ok=True)
     df = pd.read_parquet(DATA)
-    has_coaches = "oc_changed" in df.columns
+    has_coaches = "oc_changed" in df.columns and df["oc_changed"].notna().any()
     if not has_coaches:
-        print("No coordinator columns yet (run collect_coordinators.py, then build_player_seasons.py).")
+        print("No coordinator data yet: models run without coaching features.")
 
     preds, summaries, weights = [], [], []
     for pos, cfg in POSITIONS.items():

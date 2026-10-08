@@ -12,6 +12,7 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 | 2. Build one player-season table: production, per-route efficiency, coverage splits, red-zone role, health, depth charts, vacated targets, contracts, schedule, coaching, market rankings | `build_player_seasons.py` | ✅ |
 | 2b. First analysis: what WRs look like the year before a breakout | `notebooks/wr_breakouts.ipynb` | ✅ |
 | 2c. WR jump model walkthrough (JSN case study) | `notebooks/wr_jump_model.ipynb` | ✅ |
+| 2d. RB and TE jump model walkthroughs | `notebooks/rb_jump_model.ipynb`, `notebooks/te_jump_model.ipynb` | ✅ |
 | 3. Jump models for WR, TE, RB: predicted PPG change + leap probability, backtested 2019-2024 | `jump_model.py` → `predictions/` | ✅ |
 | 4. Grade 2026 predictions against actual results as the season goes | `grade_2026.py` | ✅ (in progress) |
 | 5. Website | — | planned |

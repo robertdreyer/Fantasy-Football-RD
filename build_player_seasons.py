@@ -505,7 +505,7 @@ sos["season"] -= 1     # schedule for season N+1 lands on the season-N row
 
 # --- Coordinators (optional until reference/coordinators.csv exists)
 coords = None
-if COORDINATORS.exists():
+if COORDINATORS.exists() and len(pd.read_csv(COORDINATORS)) > 0:
     coords = pd.read_csv(COORDINATORS)
     for c in ["head_coach", "oc", "dc"]:
         coords[c] = coords[c].fillna("").astype(str).str.split(" / ").str[0].replace("", np.nan)
@@ -515,7 +515,7 @@ if COORDINATORS.exists():
                .dropna(subset=["oc"]).groupby(["oc", "season"])["team_pass_rate_over_exp"].mean()
                .rename("oc_pass_rate_over_exp").reset_index())
 else:
-    print("   (no reference/coordinators.csv yet: run collect_coordinators.py to add OC/DC columns)")
+    print("   (reference/coordinators.csv missing or empty: OC/DC columns skipped)")
 
 
 # ===========================================================================
