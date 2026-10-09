@@ -1,0 +1,7 @@
+SOURCE: CBS Sports, "Mike McCoy, Rick Dennison among play-callers impacting new teams in 2017" (new play-callers only) https://www.cbssports.com/fantasy/football/news/fantasy-football-mike-mccoy-rick-dennison-among-play-callers-impacting-new-teams-in-2017
+DEN|Mike McCoy|OC
+BUF|Rick Dennison|OC
+BAL|Marty Mornhinweg|OC
+JAX|Nathaniel Hackett|OC
+LV|Todd Downing|OC|first-time
+NYJ|John Morton|OC|first-time

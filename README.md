@@ -11,6 +11,8 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 |---|---|---|
 | 1. Collect raw NFL data (2016–2025, frozen before the 2026 season) | `collect_data.py` | ✅ |
 | 1b. Coaching staffs (HC/OC/DC by team-season) from Pro Football Reference | `collect_coordinators.py` → `reference/coordinators.csv` | ✅ |
+| 1c. Offensive play-callers 2016-2026, two sources per season where available (Wikipedia never the tiebreaker) | `build_play_caller_draft.py` → `build_play_callers.py` → `reference/play_callers.csv` | ✅ |
+| 1d. Quarterback history 1999-2025, projected starter for every team 2016-2026, QB track records | `collect_qb_data.py` → `build_qb_seasons.py` → `data/processed/qb_seasons.parquet`, `reference/preseason_qbs.csv` | ✅ |
 | 2. Build one player-season table: production, per-route efficiency, coverage splits, red-zone role, health, depth charts, vacated targets, contracts, schedule, coaching, market rankings | `build_player_seasons.py` | ✅ |
 | 2b. First analysis: what WRs look like the year before a breakout | `notebooks/wr_breakouts.ipynb` | ✅ |
 | 2c. WR jump model walkthrough (JSN case study) | `notebooks/wr_jump_model.ipynb` | ✅ |
@@ -29,6 +31,8 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 python collect_data.py           # raw data into data/raw/ (not committed)
 python collect_coordinators.py   # ~25 min the first time; output is committed in reference/
+python collect_qb_data.py        # QB history 1999-2015 + PFR advanced passing (once)
+python build_qb_seasons.py       # -> qb_seasons, preseason starting QBs, QB track records
 python build_player_seasons.py   # -> data/processed/player_seasons.parquet
 python jump_model.py             # -> predictions/2026_jump_predictions.csv + backtest_summary.csv
 python grade_2026.py             # compare predictions with 2026 results so far
@@ -46,7 +50,18 @@ The 2026 season is a true holdout used to grade the projections.
 Backtest (each season predicted using only earlier seasons, 2019-2024): the models beat
 "he'll repeat his baseline" at every position. Players in the top 10% of predicted change gained
 about +1.6 to +2.1 PPR points per game on average; the bottom 10% lost about 2.9 to 3.9.
-Details: `predictions/backtest_summary.csv`. Live 2026 grading: `predictions/2026_grade_summary.csv`.
+Details: `predictions/backtest_summary.csv`.
+
+Play-callers: when a team changes play-callers, the new caller's past offensive production
+(points, yards, TDs, fantasy points; shrunk toward average) predicts the team's offense the next
+season beyond what the team did the year before (2018-2025, 108 caller changes, p = 0.01).
+For individual players it only helps running backs, so it's used in the RB model only.
+Career table: `reference/play_caller_track_record.csv`.
+
+Quarterbacks: a projected starter's track record (recent seasons weighted more, small samples pulled
+toward what QBs from the same draft range did early in their careers) predicts his team's passing
+efficiency the next season (p = 0.003). But it did not improve any position's player projections in
+the backtest, so the QB-change columns are kept for analysis and the site shows each player's 2026 QB. Live 2026 grading: `predictions/2026_grade_summary.csv`.
 
 ## Data sources
 

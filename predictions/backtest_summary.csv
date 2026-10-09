@@ -1,4 +1,4 @@
-position,seasons_tested,players_tested,leap_rate,naive_avg_miss_ppg,model_avg_miss_ppg,corr_pred_vs_actual,top10pct_actual_change,bottom10pct_actual_change,leap_auc,coaching_features
-WR,2019-2024,659,0.044,2.856,2.571,0.417,1.95,-3.066,0.763,False
-TE,2019-2024,373,0.04,2.142,1.988,0.424,1.605,-2.797,0.82,False
-RB,2019-2024,361,0.072,3.438,3.061,0.406,1.943,-3.54,0.711,False
+position,seasons_tested,players_tested,leap_rate,naive_avg_miss_ppg,model_avg_miss_ppg,corr_pred_vs_actual,top10pct_actual_change,bottom10pct_actual_change,leap_auc,caller_style_features
+WR,2019-2024,659,0.044,2.856,2.567,0.434,2.083,-3.59,0.758,False
+TE,2019-2024,373,0.04,2.142,1.978,0.431,1.552,-2.874,0.823,False
+RB,2019-2024,361,0.072,3.438,3.053,0.405,1.659,-3.615,0.728,False

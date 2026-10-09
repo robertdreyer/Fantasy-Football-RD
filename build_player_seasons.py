@@ -39,6 +39,9 @@ KICKOFF_2026 = "2026-09-09"
 
 COORDINATORS = Path("reference/coordinators.csv")   # made by collect_coordinators.py
 PLAY_CALLERS = Path("reference/play_callers.csv")   # researched: who called the offensive plays
+PRESEASON_QBS = Path("reference/preseason_qbs.csv")  # made by build_qb_seasons.py
+QB_RECORDS = OUT / "qb_records.parquet"             # made by build_qb_seasons.py
+QB_MIX = OUT / "team_qb_dropbacks.parquet"          # made by build_qb_seasons.py
 
 # Older team codes (FantasyPros, old depth charts) -> nflverse team codes
 TEAM_FIX = {"JAC": "JAX", "LAR": "LA", "OAK": "LV", "SD": "LAC", "STL": "LA"}
@@ -113,7 +116,8 @@ PBP_COLS = ["game_id", "play_id", "season", "season_type", "posteam", "defteam",
             "qb_dropback", "rush_attempt", "qb_scramble", "two_point_attempt", "pass_attempt",
             "receiver_player_id", "receiving_yards", "rushing_yards", "passer_player_id",
             "passer_player_name", "epa", "pass_oe", "cpoe", "yardline_100", "down",
-            "air_yards", "rusher_player_id", "week"]
+            "air_yards", "rusher_player_id", "week",
+            "passing_yards", "pass_touchdown", "rush_touchdown", "success"]
 pbp = pd.concat(
     [pd.read_parquet(RAW / f"pbp_{s}.parquet", columns=PBP_COLS) for s in SEASONS],
     ignore_index=True,
@@ -555,6 +559,97 @@ if PLAY_CALLERS.exists():
                 out.append({"play_caller": name, "season_called": S, "caller_seasons_before": 0})
         return pd.DataFrame(out)
 
+# --- Offensive production: how much each offense produced, so a play-caller gets credit (or blame).
+# Raw totals drift by era, so each stat is also turned into a z-score within its season
+# (0 = league average that year, +1 = one standard deviation better than average).
+pts = pd.read_parquet(RAW / "schedules.parquet").query("game_type == 'REG'").dropna(subset=["home_score"])
+pts = pd.concat([pts[["season", "home_team", "home_score"]].set_axis(["season", "team", "points"], axis=1),
+                 pts[["season", "away_team", "away_score"]].set_axis(["season", "team", "points"], axis=1)])
+pts["team"] = pts["team"].replace(TEAM_FIX)
+all_fp = pd.read_parquet(RAW / "player_stats_weekly.parquet", columns=["season", "season_type", "team", "fantasy_points_ppr"])
+all_fp = all_fp[all_fp["season_type"] == "REG"]
+prod = pd.concat([
+    pts.groupby(["team", "season"])["points"].mean().rename("off_points_pg"),
+    off.groupby(["posteam", "season"])["passing_yards"].sum().rename("pass_yds"),
+    off.groupby(["posteam", "season"])["rushing_yards"].sum().rename("rush_yds"),
+    off.groupby(["posteam", "season"])["pass_touchdown"].sum().rename("pass_td"),
+    off.groupby(["posteam", "season"])["rush_touchdown"].sum().rename("rush_td"),
+    off.groupby(["posteam", "season"])["epa"].mean().rename("off_epa_per_play"),
+    off.groupby(["posteam", "season"])["success"].mean().rename("off_success_rate"),
+    all_fp.groupby(["team", "season"])["fantasy_points_ppr"].sum().rename("fp"),
+    games_per_team,
+], axis=1).rename_axis(["team", "season"]).reset_index().dropna(subset=["team_games"])
+for c in ["pass_yds", "rush_yds", "pass_td", "rush_td", "fp"]:
+    prod[f"{c}_pg"] = prod[c] / prod["team_games"]
+prod["total_yds_pg"] = prod["pass_yds_pg"] + prod["rush_yds_pg"]
+prod["off_td_pg"] = prod["pass_td_pg"] + prod["rush_td_pg"]
+prod = prod.rename(columns={"pass_yds_pg": "off_pass_yds_pg", "rush_yds_pg": "off_rush_yds_pg",
+                            "pass_td_pg": "off_pass_td_pg", "rush_td_pg": "off_rush_td_pg",
+                            "fp_pg": "off_fantasy_pts_pg", "total_yds_pg": "off_total_yds_pg"})
+PROD_COLS = ["off_points_pg", "off_total_yds_pg", "off_pass_yds_pg", "off_rush_yds_pg", "off_td_pg",
+             "off_pass_td_pg", "off_rush_td_pg", "off_epa_per_play", "off_success_rate", "off_fantasy_pts_pg"]
+prod = prod[["team", "season"] + PROD_COLS]
+for c in PROD_COLS:
+    g = prod.groupby("season")[c]
+    prod[f"{c}_z"] = (prod[c] - g.transform("mean")) / g.transform("std")
+# One overall production score: average of the points, yards, TD and fantasy z-scores
+PROD_Z = ["off_points_pg_z", "off_total_yds_pg_z", "off_td_pg_z", "off_fantasy_pts_pg_z"]
+prod["off_production_z"] = prod[PROD_Z].mean(axis=1)
+
+caller_record = None
+if callers is not None:
+    # Every season a caller ran an offense, with what that offense produced
+    caller_seasons = (callers.merge(prod, on=["team", "season"], how="inner")
+                      .sort_values(["play_caller", "season"]))
+    # "Lift": his offense vs. the same team's offense the year before he arrived (new stints only)
+    prev = prod[["team", "season", "off_production_z"]].assign(season=lambda x: x["season"] + 1)
+    caller_seasons = caller_seasons.merge(prev.rename(columns={"off_production_z": "team_prev_production_z"}),
+                                          on=["team", "season"], how="left")
+    prev_caller = callers.assign(season=callers["season"] + 1).rename(columns={"play_caller": "prev_team_caller"})
+    caller_seasons = caller_seasons.merge(prev_caller, on=["team", "season"], how="left")
+    new_stint = caller_seasons["prev_team_caller"].notna() & (caller_seasons["prev_team_caller"] != caller_seasons["play_caller"])
+    caller_seasons["first_year_lift_z"] = np.where(
+        new_stint, caller_seasons["off_production_z"] - caller_seasons["team_prev_production_z"], np.nan)
+    caller_seasons = caller_seasons.drop(columns=["prev_team_caller"])
+    caller_seasons.round(3).to_csv("reference/play_caller_offense.csv", index=False)
+
+    SHRINK = 1   # pretend each caller also had 1 league-average season, so 1 great year doesn't look like 5
+
+    def caller_record_before(names_seasons):
+        """Each caller's production track record from seasons BEFORE S (never the season being predicted)."""
+        out = []
+        for name, S in names_seasons:
+            h = caller_seasons[(caller_seasons["play_caller"] == name) & (caller_seasons["season"] < S)]
+            n = len(h)
+            row = {"play_caller": name, "season_called": S}
+            # No history (first-time caller, or first seen before 2016 data): league average, z = 0
+            row.update({c: 0.0 for c in ["caller_production_z", "caller_points_z", "caller_pass_yds_z",
+                                         "caller_rush_yds_z", "caller_fantasy_z"]})
+            if n:
+                row.update({
+                    "caller_production_z": h["off_production_z"].sum() / (n + SHRINK),
+                    "caller_points_z": h["off_points_pg_z"].sum() / (n + SHRINK),
+                    "caller_pass_yds_z": h["off_pass_yds_pg_z"].sum() / (n + SHRINK),
+                    "caller_rush_yds_z": h["off_rush_yds_pg_z"].sum() / (n + SHRINK),
+                    "caller_fantasy_z": h["off_fantasy_pts_pg_z"].sum() / (n + SHRINK),
+                    "caller_last_production_z": h["off_production_z"].iloc[-1],
+                    "caller_avg_first_year_lift_z": h["first_year_lift_z"].mean(),
+                })
+            out.append(row)
+        return pd.DataFrame(out)
+
+    # Career table for the website / README (all seasons through 2025)
+    caller_record = (caller_seasons.groupby("play_caller")
+                     .agg(seasons=("season", "size"), first=("season", "min"), last=("season", "max"),
+                          teams=("team", lambda t: ", ".join(dict.fromkeys(t))),
+                          points_pg=("off_points_pg", "mean"), total_yds_pg=("off_total_yds_pg", "mean"),
+                          td_pg=("off_td_pg", "mean"), fantasy_pts_pg=("off_fantasy_pts_pg", "mean"),
+                          production_z=("off_production_z", "mean"),
+                          avg_first_year_lift_z=("first_year_lift_z", "mean"))
+                     .assign(production_z_shrunk=lambda x: x["production_z"] * x["seasons"] / (x["seasons"] + SHRINK))
+                     .sort_values("production_z_shrunk", ascending=False).reset_index())
+    caller_record.round(3).to_csv("reference/play_caller_track_record.csv", index=False)
+
 # --- Coordinators (optional until reference/coordinators.csv exists)
 coords = None
 if COORDINATORS.exists() and len(pd.read_csv(COORDINATORS)) > 0:
@@ -705,6 +800,61 @@ if callers is not None:
     for c in ["pass_rate_over_exp", "rb_target_share", "te_target_share", "top_target_share"]:
         df[f"next_caller_{c}_shift"] = df[f"next_caller_{c}"] - df[f"cur_{c}"]
     df = df.drop(columns=[f"cur_{c}" for c in STYLE_COLS])
+
+    # The offense he plays in this season, and the incoming caller's production track record
+    df = df.merge(prod[["team", "season", "off_points_pg", "off_total_yds_pg", "off_td_pg",
+                        "off_fantasy_pts_pg", "off_production_z"]], on=["team", "season"], how="left")
+    rec = caller_record_before([(n, s + 1) for n, s in pairs.itertuples(index=False)])
+    rec = (rec.rename(columns={"play_caller": "next_play_caller"})
+              .assign(season=lambda x: x["season_called"] - 1).drop(columns=["season_called"]))
+    rec = rec.rename(columns={c: f"next_{c}" for c in rec.columns if c.startswith("caller_")})
+    df = df.merge(rec, on=["next_play_caller", "season"], how="left")
+    # + = he's moving to (or getting) a caller whose offenses produced more than his current one
+    df["next_caller_production_vs_current"] = df["next_caller_production_z"] - df["off_production_z"]
+
+# --- Quarterbacks: next season's projected starter vs. the QB play he had this season.
+# Both sides are measured the same way: track records entering next season (earlier seasons only).
+# "This season" blends every QB who threw for his team, weighted by dropbacks, so a star returning
+# from injury (Burrow after a Flacco year) shows up as an upgrade.
+QB_REC_COLS = ["qb_rec_epa_per_dropback", "qb_rec_cpoe", "qb_rec_any_a", "qb_rec_fantasy_ppg",
+               "qb_rec_qb_rush_share", "qb_rec_qb_goal_line_share", "qb_rec_deep_attempt_rate",
+               "qb_rec_rb_target_share", "qb_rec_te_target_share", "qb_rec_top_target_share"]
+if PRESEASON_QBS.exists() and QB_RECORDS.exists() and QB_MIX.exists():
+    pq = pd.read_csv(PRESEASON_QBS)
+    qrec = pd.read_parquet(QB_RECORDS)
+    # Next season's projected starter for his next team
+    nq = (pq[["season", "team", "qb_id", "qb_name"]]
+          .assign(season=lambda x: x["season"] - 1)
+          .rename(columns={"team": "next_preseason_team", "qb_id": "next_qb_id", "qb_name": "next_qb_name"}))
+    df = df.merge(nq, on=["next_preseason_team", "season"], how="left")
+    nr = (qrec[["player_id", "season", "qb_starts_before"] + QB_REC_COLS]
+          .assign(season=lambda x: x["season"] - 1)
+          .rename(columns={"player_id": "next_qb_id", "qb_starts_before": "next_qb_starts_before",
+                           **{c: f"next_{c}" for c in QB_REC_COLS}}))
+    df = df.merge(nr, on=["next_qb_id", "season"], how="left")
+    # The QB who threw the most for his team this season, with his record entering next season
+    cq = pq[["season", "team", "actual_main_qb_id"]].rename(columns={"actual_main_qb_id": "cur_qb_id"})
+    df = df.merge(cq, on=["team", "season"], how="left")
+    mixq = pd.read_parquet(QB_MIX).merge(
+        qrec[["player_id", "season"] + QB_REC_COLS].assign(season=lambda x: x["season"] - 1),
+        on=["player_id", "season"], how="left")
+    def blend(g):
+        """Dropback-weighted average of each record over the QBs who threw for the team."""
+        out = {}
+        for c in QB_REC_COLS:
+            ok = g[c].notna()
+            out[f"cur_{c}"] = np.average(g.loc[ok, c], weights=g.loc[ok, "dropback_share"]) if ok.any() else np.nan
+        return pd.Series(out)
+
+    cur_blend = mixq.groupby(["team", "season"]).apply(blend, include_groups=False).reset_index()
+    df = df.merge(cur_blend, on=["team", "season"], how="left")
+    df["next_qb_changed"] = np.where(df["next_qb_id"].isna() | df["cur_qb_id"].isna(), np.nan,
+                                     (df["next_qb_id"] != df["cur_qb_id"]).astype(float))
+    for c in QB_REC_COLS:
+        df[f"next_qb_{c.replace('qb_rec_', '')}_shift"] = df[f"next_{c}"] - df[f"cur_{c}"]
+    df = df.drop(columns=[f"cur_{c}" for c in QB_REC_COLS])
+else:
+    print("   (run build_qb_seasons.py first for next-season QB columns)")
 
 if coords is not None:
     nc = coords.assign(season=coords["season"] - 1).rename(

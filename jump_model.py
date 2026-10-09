@@ -40,9 +40,12 @@ TRACK_RECORD = ["baseline_ppg", "ppr_per_game", "second_half_trend"]
 CAREER = ["age", "years_exp", "draft_pick_filled"]
 NEXT_SEASON = ["next_preseason_depth_tier", "depth_promotion", "changed_team"]
 ENVIRONMENT = ["qb_epa_per_dropback", "team_pass_rate_over_exp", "games_missed"]
-# Play-caller features (from reference/play_callers.csv). Switched OFF until the research covers
-# every season 2016-2026: with 2016, 2017 and 2019 still missing, early backtest seasons have no
-# caller data to learn from, and a preliminary test was mixed (slightly better for WRs, worse for RBs).
+# Next season's QB (build_qb_seasons.py): projected starter's track record vs. this season's QB play,
+# plus his rushing, deep-ball and target-spreading tendencies. Backtested 2019-2024 in ten versions;
+# none helped consistently at any position (QB record does predict TEAM passing efficiency, but not a
+# player's change from his own baseline), so these columns are kept for analysis, not in the models.
+# Play-caller STYLE features (from reference/play_callers.csv, complete for 2016-2026). Tested with
+# full data and they made every position slightly worse, so they stay off.
 USE_PLAY_CALLER_FEATURES = False
 COACHING = ["play_caller_changed", "next_caller_first_time", "next_caller_pass_rate_over_exp_shift"]
 
@@ -69,7 +72,10 @@ POSITIONS = {
             "rz_carry_share", "gl_carry_share", "tprr",
             "next_team_vacated_carry_share", "next_team_vacated_target_share",
             "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate", "next_sos_rush_def_epa",
-            "run_10plus_rate", "yac_per_reception", "lead_back_opening"],
+            "run_10plus_rate", "yac_per_reception", "lead_back_opening",
+            # Gets a new play-caller whose past offenses produced more (or less) than his current one.
+            # Helped RBs in the backtest; neutral for TEs and slightly worse for WRs, so RB only.
+            "new_caller_upgrade"],
         eligible=lambda d: (d["games"] >= 6) & ((d["carries"] + d["targets"]) >= 50),
         leap_gain=4, leap_floor=14),
 }
@@ -96,8 +102,9 @@ GROUPS = {
               "team_epa_per_rush", "team_run_stuff_rate", "team_8plus_box_rate"],
              "Good team setting (QB, blocking, schedule)", "Tough team setting (QB, blocking, schedule)"),
     "health": (["games_missed"], "Durable", "Missed games"),
-    "coaching": (["play_caller_changed", "next_caller_first_time", "next_caller_pass_rate_over_exp_shift"],
-                 "Play-caller change helps", "Play-caller change hurts"),
+    "coaching": (["play_caller_changed", "next_caller_first_time", "next_caller_pass_rate_over_exp_shift",
+                  "new_caller_upgrade"],
+                 "New play-caller with a productive track record", "New play-caller with a weaker track record"),
 }
 
 
@@ -137,6 +144,11 @@ def prepare(df, pos):
     d = d.merge(prev, on=["player_id", "season"], how="left")
     d["baseline_ppg"] = (d["ppr"] + d["prev_ppr"].fillna(0)) / (d["games"] + d["prev_games"].fillna(0))
     d["draft_pick_filled"] = d["draft_pick"].fillna(300)
+    # Incoming play-caller's production record minus his current offense's production (z-scores),
+    # counted only when the play-caller changes (new caller on his team, or he moves teams); else 0.
+    d["new_caller_upgrade"] = np.where(
+        d["next_play_caller"].isna(), np.nan,
+        np.where(d["play_caller_changed"] == 1, d["next_caller_production_vs_current"], 0.0))
     d["depth_promotion"] = d["preseason_depth_tier"] - d["next_preseason_depth_tier"]
     # "Lead back opening": he shared his backfield this season (<55% of team carries), is atop his
     # next team's depth chart, and returning teammates there had <25% of its carries.
@@ -178,7 +190,7 @@ def run_position(df, pos, cfg, has_coaches):
         "top10pct_actual_change": bt.loc[top, "ppg_change"].mean(),
         "bottom10pct_actual_change": bt.loc[bottom, "ppg_change"].mean(),
         "leap_auc": roc_auc_score(bt["leap"], bt["leap_prob"]),
-        "coaching_features": has_coaches,
+        "caller_style_features": has_coaches,
     }
 
     # Final models: all labeled seasons -> score 2025 players for 2026
@@ -192,7 +204,7 @@ def run_position(df, pos, cfg, has_coaches):
     now["leap_prob_2026"] = lm.predict_proba(now[features])[:, 1]
     why = explain(cm, now[features], features)
     now = now.join(why)
-    keep = ["player_id", "name", "position", "team", "next_preseason_team", "age", "ppr_per_game",
+    keep = ["player_id", "name", "position", "team", "next_preseason_team", "next_qb_name", "age", "ppr_per_game",
             "baseline_ppg", "pred_change_2026", "pred_ppg_2026", "leap_prob_2026", "next_preseason_rank"] \
         + list(why.columns)
     return now[keep], summary, weights
@@ -201,6 +213,8 @@ def run_position(df, pos, cfg, has_coaches):
 def main():
     OUT.mkdir(exist_ok=True)
     df = pd.read_parquet(DATA)
+    if "next_caller_production_vs_current" not in df.columns:
+        raise SystemExit("player_seasons is out of date: run  python build_player_seasons.py  first.")
     has_coaches = USE_PLAY_CALLER_FEATURES and "play_caller_changed" in df.columns
     if not has_coaches:
         print("Play-caller features are off (see USE_PLAY_CALLER_FEATURES): models run without coaching features.")

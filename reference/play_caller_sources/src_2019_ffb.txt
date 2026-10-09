@@ -1,0 +1,16 @@
+SOURCE: The Fantasy Footballers, "Fantasy Football: 2019 NFL Coaching Changes" (changes only) https://www.thefantasyfootballers.com/articles/fantasy-football-2019-coaching-changes/
+CIN|Zac Taylor|HC
+CLE|Freddie Kitchens|HC
+TB|Bruce Arians|HC
+ARI|Kliff Kingsbury|HC
+NYJ|Adam Gase|HC
+GB|Matt LaFleur|HC
+DEN|Rich Scangarello|OC
+DAL|Kellen Moore|OC
+MIA|Chad O'Shea|OC
+ATL|Dirk Koetter|OC
+JAX|John DeFilippo|OC
+DET|Darrell Bevell|OC
+BAL|Greg Roman|OC
+TEN|Arthur Smith|OC
+MIN|Kevin Stefanski|OC

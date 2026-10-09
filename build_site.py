@@ -44,6 +44,7 @@ for r in preds.itertuples(index=False):
     players.append({
         "name": d["name"], "pos": d["position"],
         "team": d["next_preseason_team"] if isinstance(d["next_preseason_team"], str) else d["team"],
+        "qb": d.get("next_qb_name") if isinstance(d.get("next_qb_name"), str) else "",
         "age": d["age"], "base": d["baseline_ppg"], "pred": d["pred_ppg_2026"],
         "chg": d["pred_change_2026"], "leap": d["leap_prob_2026"],
         "rank": d["next_preseason_rank"], "g26": d["games_2026"], "ppg26": d["ppg_2026"],
@@ -139,7 +140,7 @@ h2 { font-size: 20px; margin: 36px 0 4px; }
 .tablewrap { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 th, td { padding: 9px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
-th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
 th { font-size: 12px; color: var(--ink-2); font-weight: 600; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
 th[aria-sort="descending"]::after { content: " ↓"; } th[aria-sort="ascending"]::after { content: " ↑"; }
 tbody tr.row { cursor: pointer; } tbody tr.row:hover { background: var(--surface-2); }
@@ -247,7 +248,7 @@ tabs.addEventListener("click", e => { const b = e.target.closest("button"); if (
 
 // Table setup
 const COLS = [
-  {k: "name", l: "Player"}, {k: "team", l: "Team"}, {k: "age", l: "Age", f: f1, sm: 1},
+  {k: "name", l: "Player"}, {k: "team", l: "Team"}, {k: "qb", l: "2026 QB", sm: 1}, {k: "age", l: "Age", f: f1, sm: 1},
   {k: "base", l: "Baseline PPG", f: f1}, {k: "pred", l: "Predicted 2026", f: f1},
   {k: "chg", l: "Change", f: sgn}, {k: "leap", l: "Leap chance", f: pctf},
   {k: "rank", l: "Preseason rank", f: v => v == null ? "–" : pos + Math.round(v), sm: 1},
@@ -256,7 +257,7 @@ const COLS = [
 const thead = document.querySelector("#tbl thead"), tbody = document.querySelector("#tbl tbody");
 thead.innerHTML = "<tr>" + COLS.map(c => `<th data-k="${c.k}" class="${c.sm ? "hide-sm" : ""}">${c.l}</th>`).join("") + "</tr>";
 thead.addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return;
-  const k = th.dataset.k; sortDir = (k === sortKey) ? -sortDir : (k === "name" || k === "team" || k === "rank" || k === "age" ? 1 : -1);
+  const k = th.dataset.k; sortDir = (k === sortKey) ? -sortDir : (k === "name" || k === "team" || k === "qb" || k === "rank" || k === "age" ? 1 : -1);
   sortKey = k; renderTable(); });
 document.getElementById("search").addEventListener("input", renderTable);
 document.getElementById("roleonly").addEventListener("change", renderTable);
@@ -279,7 +280,7 @@ function renderTable() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   const role = document.getElementById("roleonly").checked;
   let rows = DATA.players.filter(p => p.pos === pos && (!role || p.base >= ROLE_FLOOR[pos])
-    && (!q || p.name.toLowerCase().includes(q) || (p.team || "").toLowerCase().includes(q)));
+    && (!q || p.name.toLowerCase().includes(q) || (p.team || "").toLowerCase().includes(q) || (p.qb || "").toLowerCase().includes(q)));
   rows.sort((a, b) => { const x = a[sortKey], y = b[sortKey];
     if (x == null) return 1; if (y == null) return -1;
     return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir; });

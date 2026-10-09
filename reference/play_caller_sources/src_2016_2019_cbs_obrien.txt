@@ -1,0 +1,5 @@
+SOURCE: CBS Sports, "Bill O'Brien gives up play-calling duties for Texans" (Feb 2020: O'Brien called plays from 2016 through 2019) https://www.cbssports.com/nfl/news/bill-obrien-gives-up-play-calling-duties-for-texans-oc-tim-kelly-will-now-lead-offense-and-coach-qbs
+2016:HOU|Bill O'Brien|HC
+2017:HOU|Bill O'Brien|HC
+2018:HOU|Bill O'Brien|HC
+2019:HOU|Bill O'Brien|HC

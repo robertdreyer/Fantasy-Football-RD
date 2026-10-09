@@ -129,7 +129,7 @@ They land in the `next_*` columns of 2025 rows. 2026 results are intentionally b
 ## Play-callers (from `reference/play_callers.csv`, researched with sources)
 Style numbers describe the offense a caller ran; for next season we use the incoming caller's most
 recent season calling plays (any team), never anything from the season being predicted.
-Coverage is incomplete until 2016, 2017 and 2019 are researched, so the models don't use these yet.
+Coverage is complete for 2016-2026. The style columns were tested in the models and left out (no gain).
 
 | Column | Meaning |
 |---|---|
@@ -142,3 +142,50 @@ Coverage is incomplete until 2016, 2017 and 2019 are researched, so the models d
 | `next_caller_rb_target_share`, `next_caller_te_target_share`, `next_caller_top_target_share` | How his offense spread targets: to RBs, to TEs, and to its top target |
 | `next_caller_motion_rate`, `next_caller_play_action_rate` | His motion and play-action rates (2022+) |
 | `next_caller_*_shift` | Incoming caller's style minus what the player's team ran this season (+ = more of it) |
+
+## Offensive production and play-caller track record
+How much an offense produced, so its play-caller gets a share of the credit. Every stat also has a
+`_z` version in the reference files: a z-score within its season (0 = league average that year,
++1 = one standard deviation better), because scoring levels change from year to year.
+`production_z` = average of the points, total yards, offensive TD and fantasy-point z-scores.
+
+| Column | Meaning |
+|---|---|
+| `off_points_pg` | Points per game his team scored this season (all points, from the schedule) |
+| `off_total_yds_pg` | Passing + rushing yards per game |
+| `off_td_pg` | Offensive (passing + rushing) touchdowns per game |
+| `off_fantasy_pts_pg` | PPR fantasy points per game scored by all of his team's players |
+| `off_production_z` | His team's overall production score this season |
+| `next_caller_production_z` | Incoming caller's average production score over the seasons he called before next season, shrunk toward average (as if he also had one league-average season). First-time callers = 0 |
+| `next_caller_points_z`, `next_caller_pass_yds_z`, `next_caller_rush_yds_z`, `next_caller_fantasy_z` | The same track record for points, passing yards, rushing yards and fantasy points |
+| `next_caller_last_production_z` | Production score in the incoming caller's most recent season |
+| `next_caller_avg_first_year_lift_z` | When he took over a new team before: his first year's production score minus that team's the year before |
+| `next_caller_production_vs_current` | Incoming caller's track record minus his current offense's production (+ = upgrade) |
+
+Model feature (RB only, computed in `jump_model.py`): `new_caller_upgrade` =
+`next_caller_production_vs_current` when the play-caller changes (new caller, or he changes teams), else 0.
+
+Reference files: `reference/play_caller_offense.csv` (every caller-season with its offense's numbers)
+and `reference/play_caller_track_record.csv` (career table, ranked by shrunk production score).
+
+## Next season's quarterback (from `build_qb_seasons.py`)
+The projected starter comes from the depth chart before Week 1 (2016-2024 weekly charts; 2025-2026
+the last daily chart before kickoff). Track records use only seasons before the one being predicted.
+"This season's QB play" blends every QB who threw for his team, weighted by dropbacks.
+Tested in the models and left out (no consistent gain); kept for analysis and shown on the site.
+
+| Column | Meaning |
+|---|---|
+| `next_qb_id`, `next_qb_name` | Projected starting QB for his next-preseason team |
+| `next_qb_starts_before` | Career starts the incoming QB had before next season (1999+) |
+| `next_qb_rec_epa_per_dropback`, `next_qb_rec_cpoe`, `next_qb_rec_any_a` | Incoming QB's efficiency track record: EPA per dropback, completion % over expected, adjusted net yards per attempt |
+| `next_qb_rec_fantasy_ppg` | His own fantasy points per game track record |
+| `next_qb_rec_qb_rush_share`, `next_qb_rec_qb_goal_line_share` | Share of his team's runs (and runs inside the 5) he took himself (2016+) |
+| `next_qb_rec_deep_attempt_rate` | Share of his passes thrown 20+ air yards (2016+) |
+| `next_qb_rec_rb_target_share`, `next_qb_rec_te_target_share`, `next_qb_rec_top_target_share` | How he spread targets: to RBs, to TEs, and to his top target (2016+) |
+| `cur_qb_id` | QB who threw the most for his team this season |
+| `next_qb_changed` | 1 if next season's projected starter is a different QB |
+| `next_qb_*_shift` | Incoming QB's record minus this season's QB play (+ = upgrade / more of it) |
+
+Full QB tables: `docs/qb_seasons_columns.md`.
+

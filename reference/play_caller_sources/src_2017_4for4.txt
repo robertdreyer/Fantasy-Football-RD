@@ -1,0 +1,33 @@
+SOURCE: 4for4 (Chris Raybon), "3 Key Fantasy Football Facts About Every NFL Team's Offense" (Aug 2017; play-caller marked for each team) https://www.4for4.com/3-key-fantasy-football-facts-about-every-nfl-teams-offense
+ARI|Bruce Arians|HC
+ATL|Steve Sarkisian|OC
+BAL|Marty Mornhinweg|OC
+BUF|Rick Dennison|OC
+CAR|Mike Shula|OC
+CHI|Dowell Loggains|OC
+CIN|Ken Zampese|OC
+CLE|Hue Jackson|HC
+DAL|Scott Linehan|OC
+DEN|Mike McCoy|OC
+DET|Jim Bob Cooter|OC
+GB|Mike McCarthy|HC
+HOU|Bill O'Brien|HC
+IND|Rob Chudzinski|OC
+JAX|Nathaniel Hackett|OC
+KC|Andy Reid|HC
+LAC|Ken Whisenhunt|OC
+LA|Sean McVay|HC
+MIA|Adam Gase|HC
+MIN|Pat Shurmur|OC
+NE|Josh McDaniels|OC
+NO|Sean Payton|HC
+NYG|Ben McAdoo|HC
+NYJ|John Morton|OC
+LV|Todd Downing|OC
+PHI|Doug Pederson|HC
+PIT|Todd Haley|OC
+SF|Kyle Shanahan|HC
+SEA|Darrell Bevell|OC
+TB|Dirk Koetter|HC
+TEN|Terry Robiskie|OC
+WAS|Jay Gruden|HC|OC Matt Cavanaugh
