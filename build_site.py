@@ -93,6 +93,12 @@ market_2026 = [{"name": r["name"], "pos": r["position"],
                for r in m26.to_dict("records")]
 
 
+# Team logos and colors for the scatter plot (reference/team_logos.csv, from nflverse's team table)
+logo_path = Path("reference/team_logos.csv")
+team_logos = ({r["team_abbr"]: {"logo": r["team_logo_espn"], "color": r["team_color"]}
+               for r in pd.read_csv(logo_path).to_dict("records")} if logo_path.exists() else {})
+
+
 def clean(x):
     """JSON can't hold NaN: turn it into null, and round floats to keep the page small."""
     if isinstance(x, dict):
@@ -107,6 +113,7 @@ def clean(x):
 
 
 data = clean({"players": players, "backtest": backtest, "live": live,
+              "teams": team_logos,
               "marketHist": market_hist, "market2026": market_2026, "marketSource": market_source,
               "throughWeek": through_week, "updated": date.today().strftime("%B %-d, %Y") if os.name != "nt"
               else date.today().strftime("%B %#d, %Y"), "repo": REPO_URL})
@@ -270,7 +277,8 @@ season within the same group; blue = beating his expert rank, red = behind it.</
 
 <h2 id="live">Live check: predicted vs. actual 2026 change</h2>
 <p class="sub" id="livesub"></p>
-<div class="toolbar"><label><input type="checkbox" id="liveall"> Show every player, not just drafted ones</label></div>
+<div class="toolbar"><label><input type="checkbox" id="liveall"> Show every player, not just drafted ones</label>
+  <label><input type="checkbox" id="logos" checked> Team logos</label></div>
 <div class="chart" id="chart"><div class="tip" id="tip"></div></div>
 
 <h2 id="how-it-works">Method</h2>
@@ -278,6 +286,7 @@ season within the same group; blue = beating his expert rank, red = behind it.</
 
 <footer>Built by Robert Dreyer. Data: nflverse (play-by-play, Next Gen Stats, depth charts, FTN charting),
 Pro Football Reference via nflverse, OverTheCap contracts, FantasyPros consensus rankings archived by DynastyProcess.
+Team logos are trademarks of their teams and the NFL, shown only to identify each player's team.
 <span id="repolink"></span></footer>
 </div>
 
@@ -391,7 +400,8 @@ function renderChart() {
   const all = document.getElementById("liveall").checked;
   const pts = DATA.players.filter(p => p.pos === pos && p.g26 >= 2 && p.ppg26 != null
       && (all || (p.rank != null && p.rank <= DRAFTED[pos])))
-    .map(p => ({n: p.name, x: p.chg, y: p.ppg26 - p.base}));
+    .map(p => ({n: p.name, t: p.team, x: p.chg, y: p.ppg26 - p.base}));
+  const useLogos = document.getElementById("logos").checked;
   const box = document.getElementById("chart"), tip = document.getElementById("tip");
   box.querySelectorAll("svg").forEach(s => s.remove());
   const sub = document.getElementById("livesub");
@@ -415,16 +425,23 @@ function renderChart() {
   g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--ink-3)" stroke-width="1"/>`;
   const lo = Math.max(x0, y0), hi = Math.min(x1, y1);
   g += `<line x1="${X(lo)}" y1="${Y(lo)}" x2="${X(hi)}" y2="${Y(hi)}" stroke="var(--pred)" stroke-width="2" stroke-dasharray="5 4"/>`;
-  g += pts.map((p, i) => `<circle data-i="${i}" cx="${X(p.x)}" cy="${Y(p.y)}" r="5" fill="var(--accent)" fill-opacity=".75" stroke="var(--surface)" stroke-width="1.5"/>`).join("");
+  // Each player: a dot in his team's color, with the team logo on top (if the logo can't load, the dot shows)
+  const S = 24;
+  g += pts.map((p, i) => { const tm = DATA.teams[p.t] || {}, cx = X(p.x), cy = Y(p.y);
+    if (!useLogos || !tm.logo)
+      return `<circle class="pt" data-i="${i}" cx="${cx}" cy="${cy}" r="5" fill="var(--accent)" fill-opacity=".75" stroke="var(--surface)" stroke-width="1.5"/>`;
+    return `<g class="pt" data-i="${i}"><circle cx="${cx}" cy="${cy}" r="6" fill="${tm.color || "var(--accent)"}" stroke="var(--surface)" stroke-width="1.5"/>
+      <image href="${tm.logo}" x="${cx - S / 2}" y="${cy - S / 2}" width="${S}" height="${S}" onload="this.previousElementSibling.style.opacity=0" onerror="this.remove()"/>
+      <rect x="${cx - S / 2}" y="${cy - S / 2}" width="${S}" height="${S}" fill="transparent"/></g>`; }).join("");
   g += `<text x="${(W + m.l) / 2}" y="${H - 6}" text-anchor="middle">Predicted change vs. baseline (PPG)</text>`;
   g += `<text transform="translate(12 ${(H - m.b + m.t) / 2}) rotate(-90)" text-anchor="middle">Actual 2026 change (PPG)</text>`;
   box.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Scatter plot of predicted versus actual change in fantasy points per game for ${pos}s in 2026">${g}</svg>
-    <div class="legend"><span><span class="dot" style="background:var(--accent)"></span>Player</span>
+    <div class="legend"><span><span class="dot" style="background:var(--accent)"></span>${useLogos ? "Player (his 2026 team's logo)" : "Player"}</span>
     <span><span class="dot" style="background:var(--pred)"></span>Dashed line = prediction exactly right</span></div>`);
   const svg = box.querySelector("svg");
-  svg.addEventListener("mousemove", e => { const c = e.target.closest("circle");
+  svg.addEventListener("mousemove", e => { const c = e.target.closest(".pt");
     if (!c) { tip.style.opacity = 0; return; } const p = pts[+c.dataset.i], rb = box.getBoundingClientRect();
-    tip.textContent = `${p.n}: predicted ${sgn(p.x)}, actual ${sgn(p.y)}`; tip.style.opacity = 1;
+    tip.textContent = `${p.n} (${p.t || "FA"}): predicted ${sgn(p.x)}, actual ${sgn(p.y)}`; tip.style.opacity = 1;
     tip.style.left = Math.min(e.clientX - rb.left + 12, rb.width - tip.offsetWidth - 8) + "px"; tip.style.top = (e.clientY - rb.top - 30) + "px"; });
   svg.addEventListener("mouseleave", () => tip.style.opacity = 0);
 }
@@ -478,6 +495,7 @@ function renderMarket() {
 }
 
 document.getElementById("liveall").addEventListener("change", renderChart);
+document.getElementById("logos").addEventListener("change", renderChart);
 // Highlight the menu link for the section on screen
 const navA = [...document.querySelectorAll('.navlinks a[href^="#"]')];
 const secs = navA.map(a => document.getElementById(a.getAttribute("href").slice(1)));
