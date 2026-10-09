@@ -1,0 +1,10 @@
+tier,verdict,hist_players_all,hist_beat_rate_all
+early picks,Fair,142,0.275
+early picks,Reach,50,0.28
+early picks,Value,14,0.429
+late picks,Fair,106,0.802
+late picks,Reach,26,0.615
+late picks,Value,84,0.762
+middle picks,Fair,89,0.382
+middle picks,Reach,70,0.343
+middle picks,Value,50,0.68

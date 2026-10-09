@@ -226,7 +226,7 @@ footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
   <a class="brand" href="#top">Fantasy Football RD</a>
   <div class="navlinks">
     <a href="#results">Results</a><a href="#predictions">Predictions</a><a href="#market"><span class="hide-sm">Model </span>vs. Experts</a>
-    <a href="#live">Live Check</a><a href="#how-it-works">Method</a>
+    <a href="draft-board.html">Draft Board</a><a href="#live">Live Check</a><a href="#how-it-works">Method</a>
   </div>
 </div></nav>
 <div class="wrap" id="top">
@@ -479,7 +479,7 @@ function renderMarket() {
 
 document.getElementById("liveall").addEventListener("change", renderChart);
 // Highlight the menu link for the section on screen
-const navA = [...document.querySelectorAll(".navlinks a")];
+const navA = [...document.querySelectorAll('.navlinks a[href^="#"]')];
 const secs = navA.map(a => document.getElementById(a.getAttribute("href").slice(1)));
 const onScroll = () => { let cur = 0; secs.forEach((h, i) => { if (h && h.getBoundingClientRect().top < 120) cur = i; });
   navA.forEach((a, i) => a.classList.toggle("on", i === cur && window.scrollY > 40)); };
@@ -491,7 +491,166 @@ render();
 </html>
 """
 
+BOARD_HTML = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2026 Draft Board: Model vs. Experts</title>
+<meta name="description" content="Every player in the 2026 preseason PPR rankings, with the model's verdict on whether his draft spot is supported.">
+__STYLE__
+<style>
+.chipbar { display: flex; flex-wrap: wrap; gap: 6px; }
+.chipbar button { border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13px;
+  font-weight: 600; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.chipbar button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.v { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.v.Value { background: var(--accent-soft); color: var(--accent); }
+.v.Reach { background: color-mix(in srgb, var(--down) 15%, transparent); color: var(--down); }
+.v.Fair { background: var(--surface-2); color: var(--ink-2); }
+.muted { color: var(--ink-3); font-size: 13px; white-space: normal; }
+#board th:nth-child(3), #board td:nth-child(3) { text-align: left; }
+#board td:nth-child(2) { font-weight: 600; }
+.rec th, .rec td { text-align: left !important; }
+.flabel { font-size: 12px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 14px 0 4px; }
+.filters > div { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { #board { font-size: 13px; } #board th, #board td { padding: 8px 6px; }
+  #board td:nth-child(2) { white-space: normal; } }
+.rec td b { font-size: 16px; }
+.rec .n { color: var(--ink-3); font-size: 12px; }
+.rec tr.mid td { background: var(--accent-soft); }
+</style>
+</head>
+<body>
+<nav class="topnav" aria-label="Sections"><div class="wrap navin">
+  <a class="brand" href="index.html">Fantasy Football RD</a>
+  <div class="navlinks">
+    <a href="index.html#results">Results</a><a href="index.html#predictions">Predictions</a>
+    <a href="index.html#market"><span class="hide-sm">Model </span>vs. Experts</a>
+    <a href="draft-board.html" class="on" aria-current="page">Draft Board</a>
+    <a href="index.html#live">Live Check</a><a href="index.html#how-it-works">Method</a>
+  </div>
+</div></nav>
+<div class="wrap">
+<header>
+  <div class="eyebrow">2026 Draft Board</div>
+  <h1>Is his draft spot supported by the model?</h1>
+  <p class="lede">Every player in the experts' 2026 preseason PPR rankings, in draft order. For each WR, RB and TE the model
+  re-ranks the same players by predicted points per game and gives a verdict: <b>Value</b> (the model would draft him
+  noticeably earlier), <b>Fair</b>, or <b>Reach</b> (noticeably later).</p>
+  <div class="meta" id="meta"></div>
+</header>
+
+<h2>How much to trust each verdict</h2>
+<p class="sub">How often players with each verdict beat their expert rank, 2020–2025 (predictions made only from earlier
+seasons; players who got hurt count as 0 points). The model's edge is in the <b>middle rounds</b>; on early picks
+the experts already price in what it knows.</p>
+<div class="tablewrap"><table class="rec" id="rec"></table></div>
+
+<h2>The board</h2>
+<div class="filters">
+  <div><span class="flabel">Position</span><div class="chipbar" id="posf" aria-label="Position"></div></div>
+  <div><span class="flabel">Verdict</span><div class="chipbar" id="verf" aria-label="Verdict"></div></div>
+</div>
+<div class="toolbar">
+  <input id="q" type="search" placeholder="Search players or teams" aria-label="Search players or teams">
+  <label><input type="checkbox" id="ratedonly"> Only players with a verdict</label>
+</div>
+<div class="tablewrap"><table id="board"><thead></thead><tbody></tbody></table></div>
+<p class="note"># = experts' overall rank (FantasyPros PPR consensus, WR/RB/TE/QB only). Experts / Model = position rank
+from each. Verdict: the model ranks him at least 10% of the position group higher (Value) or lower (Reach) than the experts
+(6 spots for WRs, 4 for RBs, 2 for TEs), among the experts' top 60 WRs, 40 RBs and 20 TEs. Track record = how often that
+verdict, in that part of the draft at that position, beat its expert rank in 2020–2025. Rookies, QBs and players with too
+little 2025 action aren't rated.</p>
+
+<footer>Built by Robert Dreyer. Rankings: FantasyPros consensus, archived by DynastyProcess. <a href="index.html">Back to the main page</a>.</footer>
+</div>
+<script>
+const D = __DATA__;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const f1 = v => v == null ? "–" : v.toFixed(1);
+const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+document.getElementById("meta").innerHTML = `Expert rankings from ${D.rankingsDate} (last update before kickoff) · model
+  predictions saved ${D.predsSaved}` + (D.throughWeek ? ` · 2026 results through Week ${D.throughWeek}` : "");
+
+// Track-record table
+const tiers = ["early picks", "middle picks", "late picks"], verds = ["Value", "Fair", "Reach"];
+const cell = (t, v) => { const r = D.record.find(x => x.tier === t && x.verdict === v);
+  return r ? `<td><b>${pct(r.hist_beat_rate_all)}</b> <span class="n">of ${r.hist_players_all}</span></td>` : "<td>–</td>"; };
+document.getElementById("rec").innerHTML = `<thead><tr><th>Part of the draft</th>${verds.map(v => `<th><span class="v ${v}">${v}</span></th>`).join("")}</tr></thead>
+  <tbody>${tiers.map(t => `<tr class="${t === "middle picks" ? "mid" : ""}"><td>${t[0].toUpperCase() + t.slice(1)}</td>${verds.map(v => cell(t, v)).join("")}</tr>`).join("")}</tbody>`;
+
+// Filters
+let posF = "All", verF = "All", sortKey = "ov", sortDir = 1;
+const chipbar = (id, opts, get, set) => { const el = document.getElementById(id);
+  const draw = () => el.innerHTML = opts.map(o => `<button aria-pressed="${o === get()}" data-o="${o}">${o}</button>`).join("");
+  el.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; set(b.dataset.o); draw(); render(); }); draw(); };
+chipbar("posf", ["All", "WR", "RB", "TE", "QB"], () => posF, v => posF = v);
+chipbar("verf", ["All", "Value", "Fair", "Reach"], () => verF, v => verF = v);
+document.getElementById("q").addEventListener("input", render);
+document.getElementById("ratedonly").addEventListener("change", render);
+
+const COLS = [
+  {k: "ov", l: "#"}, {k: "name", l: "Player"}, {k: "team", l: "Team", sm: 1},
+  {k: "epr", l: "Experts"}, {k: "mpr", l: "Model"}, {k: "pred", l: "Pred. PPG", sm: 1},
+  {k: "verdict", l: "Verdict"}, {k: "hr", l: "Track record", sm: 1}, {k: "ppg26", l: "2026 PPG", sm: 1},
+];
+const thead = document.querySelector("#board thead"), tbody = document.querySelector("#board tbody");
+thead.innerHTML = "<tr>" + COLS.map(c => `<th data-k="${c.k}" class="${c.sm ? "hide-sm" : ""}">${c.l}</th>`).join("") + "</tr>";
+thead.addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return; const k = th.dataset.k;
+  sortDir = k === sortKey ? -sortDir : (["pred", "hr", "ppg26"].includes(k) ? -1 : 1); sortKey = k; render(); });
+
+function render() {
+  const q = document.getElementById("q").value.trim().toLowerCase(), rated = document.getElementById("ratedonly").checked;
+  let rows = D.rows.filter(r => (posF === "All" || r.pos === posF) && (verF === "All" || r.verdict === verF)
+    && (!rated || r.verdict) && (!q || r.name.toLowerCase().includes(q) || (r.team || "").toLowerCase().includes(q)));
+  const order = {Value: 0, Fair: 1, Reach: 2};
+  rows.sort((a, b) => { let x = a[sortKey], y = b[sortKey];
+    if (sortKey === "verdict") { x = x == null ? null : order[x]; y = y == null ? null : order[y]; }
+    if (x == null) return 1; if (y == null) return -1;
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir; });
+  thead.querySelectorAll("th").forEach(th => th.setAttribute("aria-sort", th.dataset.k === sortKey ? (sortDir < 0 ? "descending" : "ascending") : "none"));
+  tbody.innerHTML = rows.length ? rows.map(r => `<tr>
+    <td>${r.ov}</td><td>${esc(r.name)}</td><td class="hide-sm">${esc(r.team || "")}</td>
+    <td>${r.pos}${r.epr}</td><td>${r.mpr != null ? r.pos + r.mpr : "–"}</td><td class="hide-sm">${f1(r.pred)}</td>
+    <td>${r.verdict ? `<span class="v ${r.verdict}">${r.verdict}</span>` : `<span class="muted">${esc(r.note)}</span>`}</td>
+    <td class="hide-sm">${r.hr != null ? `${pct(r.hr)} <span class="muted">of ${r.hn}</span>` : "–"}</td>
+    <td class="hide-sm">${f1(r.ppg26)}${r.g26 != null ? ` <span class="muted">(${r.g26}g)</span>` : ""}</td></tr>`).join("")
+    : `<tr><td colspan="${COLS.length}" class="empty">No players match.</td></tr>`;
+}
+render();
+document.querySelector(".navlinks a.on").scrollIntoView({inline: "center", block: "nearest"});
+</script>
+</body>
+</html>
+"""
+
 (SITE / "index.html").write_text(HTML.replace("__DATA__", json.dumps(data)), encoding="utf-8")
+
+# ---------------------------------------------------------------------------
+# Second page: the 2026 draft board (from draft_board.py)
+# ---------------------------------------------------------------------------
+board_path = PRED / "2026_draft_board.csv"
+if board_path.exists():
+    board = pd.read_csv(board_path).merge(
+        preds[["player_id", "games_2026", "ppg_2026"]].drop_duplicates("player_id"), on="player_id", how="left")
+    rec_path = PRED / "draft_board_verdict_record.csv"
+    bdata = clean({
+        "rows": [{"ov": r["overall_rank"], "name": r["player"], "pos": r["position"], "team": r["team"],
+                  "epr": r["expert_pos_rank"], "mpr": r["model_pos_rank"], "pred": r["pred_ppg_2026"],
+                  "base": r["baseline_ppg"], "verdict": r["verdict"] if isinstance(r["verdict"], str) else None,
+                  "tier": r["tier"] if isinstance(r["tier"], str) else None,
+                  "hr": r["hist_beat_rate"], "hn": r["hist_players"],
+                  "note": r["note"] if isinstance(r["note"], str) else "",
+                  "g26": r["games_2026"], "ppg26": r["ppg_2026"]} for r in board.to_dict("records")],
+        "record": pd.read_csv(rec_path).to_dict("records") if rec_path.exists() else [],
+        "rankingsDate": str(board["rankings_date"].iloc[0]), "predsSaved": str(board["predictions_saved"].iloc[0]),
+        "throughWeek": through_week, "updated": data["updated"], "repo": REPO_URL})
+    style = HTML[HTML.index("<style>"):HTML.index("</style>") + len("</style>")]
+    page = BOARD_HTML.replace("__STYLE__", style).replace("__DATA__", json.dumps(bdata))
+    (SITE / "draft-board.html").write_text(page, encoding="utf-8")
+    print(f"Built {SITE / 'draft-board.html'} ({len(board)} players)")
 (SITE / ".nojekyll").write_text("")
 print(f"Built {SITE / 'index.html'} ({len(players)} players"
       + (f", 2026 results through week {through_week})" if through_week else ")"))
