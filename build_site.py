@@ -140,7 +140,20 @@ html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
-header { padding: 40px 0 8px; }
+header { padding: 28px 0 8px; }
+html { scroll-behavior: smooth; }
+h2[id] { scroll-margin-top: 64px; }
+.topnav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.navin { display: flex; align-items: center; gap: 16px; height: 52px; }
+.brand { font-weight: 700; color: var(--ink); text-decoration: none; white-space: nowrap; font-size: 15px; }
+.navlinks { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.navlinks::-webkit-scrollbar { display: none; }
+.navlinks a { color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 10px;
+  border-radius: 999px; white-space: nowrap; }
+.navlinks a:hover { color: var(--ink); background: var(--surface-2); }
+.navlinks a.on { color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 640px) { .brand { display: none; } .navlinks { margin-left: 0; } }
 .eyebrow { color: var(--accent); font-weight: 600; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
 h1 { font-size: clamp(26px, 4.4vw, 40px); line-height: 1.15; margin: 6px 0 10px; letter-spacing: -.01em; }
 .lede { color: var(--ink-2); max-width: 720px; margin: 0 0 6px; font-size: 16px; }
@@ -209,7 +222,14 @@ footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<nav class="topnav" aria-label="Sections"><div class="wrap navin">
+  <a class="brand" href="#top">Fantasy Football RD</a>
+  <div class="navlinks">
+    <a href="#results">Results</a><a href="#predictions">Predictions</a><a href="#market"><span class="hide-sm">Model </span>vs. Experts</a>
+    <a href="#live">Live Check</a><a href="#how-it-works">Method</a>
+  </div>
+</div></nav>
+<div class="wrap" id="top">
 <header>
   <div class="eyebrow">Fantasy Football RD</div>
   <h1>Who will beat their own track record in 2026?</h1>
@@ -219,11 +239,11 @@ footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
   <div class="meta" id="meta"></div>
 </header>
 
-<h2>How well does it work?</h2>
+<h2 id="results">How well does it work?</h2>
 <p class="sub">Backtest: each season from 2019 to 2024 predicted using only earlier seasons. 2026: the same predictions graded live.</p>
 <div class="cards" id="scorecards"></div>
 
-<h2>2026 predictions</h2>
+<h2 id="predictions">2026 predictions</h2>
 <div class="tabs" role="tablist" id="tabs"></div>
 
 <h3 style="margin:4px 0 10px;font-size:16px">Most likely to make a big leap</h3>
@@ -237,7 +257,7 @@ footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
 <p class="sub" style="margin-top:8px">Click a player to see what drives his prediction. PPG = PPR fantasy points per game.
 Baseline = games-weighted PPG over 2024–2025.</p>
 
-<h2>Model vs. the experts</h2>
+<h2 id="market">Model vs. the experts</h2>
 <p class="sub">Where the model disagrees with expert consensus rankings (FantasyPros, before each season), who is right?
 Players are compared only with others the experts ranked similarly. Backtest: the experts' top <span id="mkttop"></span>
 each season from 2020 to 2025, with predictions trained only on earlier seasons. Players who got hurt count as 0 points.</p>
@@ -248,11 +268,12 @@ each season from 2020 to 2025, with predictions trained only on earlier seasons.
 <p class="note">Experts / Model = each one's preseason rank within this group. So far = rank by total PPR points this
 season within the same group; blue = beating his expert rank, red = behind it.</p>
 
-<h2>Live check: predicted vs. actual 2026 change</h2>
+<h2 id="live">Live check: predicted vs. actual 2026 change</h2>
 <p class="sub" id="livesub"></p>
+<div class="toolbar"><label><input type="checkbox" id="liveall"> Show every player, not just drafted ones</label></div>
 <div class="chart" id="chart"><div class="tip" id="tip"></div></div>
 
-<h2>Method</h2>
+<h2 id="how-it-works">Method</h2>
 <div class="method"><ul id="method"></ul></div>
 
 <footer>Built by Robert Dreyer. Data: nflverse (play-by-play, Next Gen Stats, depth charts, FTN charting),
@@ -364,7 +385,12 @@ function renderLeaps() {
 }
 
 function renderChart() {
-  const pts = DATA.players.filter(p => p.pos === pos && p.g26 >= 2 && p.ppg26 != null)
+  // Default: players the experts ranked before the season (top 60 WR / 40 RB / 20 TE), the same group
+  // as "Model vs. the experts". Chosen by preseason rank, not by 2026 results, so it isn't cherry-picked.
+  const DRAFTED = {WR: 60, RB: 40, TE: 20};
+  const all = document.getElementById("liveall").checked;
+  const pts = DATA.players.filter(p => p.pos === pos && p.g26 >= 2 && p.ppg26 != null
+      && (all || (p.rank != null && p.rank <= DRAFTED[pos])))
     .map(p => ({n: p.name, x: p.chg, y: p.ppg26 - p.base}));
   const box = document.getElementById("chart"), tip = document.getElementById("tip");
   box.querySelectorAll("svg").forEach(s => s.remove());
@@ -373,7 +399,9 @@ function renderChart() {
   const n = pts.length, mx = pts.reduce((s, p) => s + p.x, 0) / n, my = pts.reduce((s, p) => s + p.y, 0) / n;
   const r = pts.reduce((s, p) => s + (p.x - mx) * (p.y - my), 0) /
     Math.sqrt(pts.reduce((s, p) => s + (p.x - mx) ** 2, 0) * pts.reduce((s, p) => s + (p.y - my) ** 2, 0));
-  sub.textContent = `Each dot is a ${pos} with 2+ games in 2026 (n = ${n}). Correlation so far: ${r.toFixed(2)}. ` +
+  sub.textContent = (all ? `Each dot is a ${pos} with 2+ games in 2026 (n = ${n}). `
+      : `Each dot is one of the experts' preseason top ${DRAFTED[pos]} ${pos}s with 2+ games in 2026 (n = ${n}). `) +
+    `Correlation so far: ${r.toFixed(2)}. ` +
     `Early-season results are noisy; this firms up after about 8 games.`;
   const W = 760, H = 380, m = {l: 48, r: 16, t: 14, b: 40};
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
@@ -449,6 +477,13 @@ function renderMarket() {
   }).join("");
 }
 
+document.getElementById("liveall").addEventListener("change", renderChart);
+// Highlight the menu link for the section on screen
+const navA = [...document.querySelectorAll(".navlinks a")];
+const secs = navA.map(a => document.getElementById(a.getAttribute("href").slice(1)));
+const onScroll = () => { let cur = 0; secs.forEach((h, i) => { if (h && h.getBoundingClientRect().top < 120) cur = i; });
+  navA.forEach((a, i) => a.classList.toggle("on", i === cur && window.scrollY > 40)); };
+window.addEventListener("scroll", onScroll, {passive: true}); onScroll();
 function render() { renderLeaps(); renderTable(); renderMarket(); renderChart(); }
 render();
 </script>
