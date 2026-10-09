@@ -20,7 +20,7 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 | 3. Jump models for WR, TE, RB: predicted PPG change + leap probability, backtested 2019-2024 | `jump_model.py` → `predictions/` | ✅ |
 | 4. Grade 2026 predictions against actual results as the season goes | `grade_2026.py` | ✅ (in progress) |
 | 4b. Model vs. expert rankings backtest | `market_test.py` → `predictions/market_backtest*.csv` | ✅ |
-| 4c. 2026 draft board: every ranked player with the model's Value / Fair / Reach verdict | `draft_board.py` → `predictions/2026_draft_board.csv` (site page `draft-board.html`) | ✅ |
+| 4c. 2026 draft board: ESPN's final PPR Top 300 with the model's Value / Fair / Reach verdict (FantasyPros alongside) | `parse_espn_cheatsheet.py` → `reference/espn_2026_ppr_top300.csv`; `draft_board.py` → `predictions/2026_draft_board.csv` (site page `draft-board.html`) | ✅ |
 | 5. Website: predictions, per-player explanations, live grading | `build_site.py` → GitHub Pages | ✅ |
 | 6. Weekly automation: grade + rebuild + publish every Tuesday | `.github/workflows/weekly-update.yml` | ✅ |
 | 7. Rookie projections from college data | — | planned |
