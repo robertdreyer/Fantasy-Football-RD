@@ -559,7 +559,8 @@ the experts already price in what it knows.</p>
 </div>
 <div class="tablewrap"><table id="board"><thead></thead><tbody></tbody></table></div>
 <p class="note"># = experts' overall rank (FantasyPros PPR consensus, WR/RB/TE/QB only). Experts / Model = position rank
-from each. Verdict: the model ranks him at least 10% of the position group higher (Value) or lower (Reach) than the experts
+from each. Leap chance = the model's probability of a big jump over his recent scoring (WR/RB: +4 PPG and 14+ PPG;
+TE: +3 and 11+). Verdict: the model ranks him at least 10% of the position group higher (Value) or lower (Reach) than the experts
 (6 spots for WRs, 4 for RBs, 2 for TEs), among the experts' top 60 WRs, 40 RBs and 20 TEs. Track record = how often that
 verdict, in that part of the draft at that position, beat its expert rank in 2020–2025. Rookies, QBs and players with too
 little 2025 action aren't rated.</p>
@@ -593,13 +594,13 @@ document.getElementById("ratedonly").addEventListener("change", render);
 
 const COLS = [
   {k: "ov", l: "#"}, {k: "name", l: "Player"}, {k: "team", l: "Team", sm: 1},
-  {k: "epr", l: "Experts"}, {k: "mpr", l: "Model"}, {k: "pred", l: "Pred. PPG", sm: 1},
+  {k: "epr", l: "Experts"}, {k: "mpr", l: "Model"}, {k: "pred", l: "Pred. PPG", sm: 1}, {k: "leap", l: "Leap chance", sm: 1},
   {k: "verdict", l: "Verdict"}, {k: "hr", l: "Track record", sm: 1}, {k: "ppg26", l: "2026 PPG", sm: 1},
 ];
 const thead = document.querySelector("#board thead"), tbody = document.querySelector("#board tbody");
 thead.innerHTML = "<tr>" + COLS.map(c => `<th data-k="${c.k}" class="${c.sm ? "hide-sm" : ""}">${c.l}</th>`).join("") + "</tr>";
 thead.addEventListener("click", e => { const th = e.target.closest("th"); if (!th) return; const k = th.dataset.k;
-  sortDir = k === sortKey ? -sortDir : (["pred", "hr", "ppg26"].includes(k) ? -1 : 1); sortKey = k; render(); });
+  sortDir = k === sortKey ? -sortDir : (["pred", "leap", "hr", "ppg26"].includes(k) ? -1 : 1); sortKey = k; render(); });
 
 function render() {
   const q = document.getElementById("q").value.trim().toLowerCase(), rated = document.getElementById("ratedonly").checked;
@@ -613,7 +614,7 @@ function render() {
   thead.querySelectorAll("th").forEach(th => th.setAttribute("aria-sort", th.dataset.k === sortKey ? (sortDir < 0 ? "descending" : "ascending") : "none"));
   tbody.innerHTML = rows.length ? rows.map(r => `<tr>
     <td>${r.ov}</td><td>${esc(r.name)}</td><td class="hide-sm">${esc(r.team || "")}</td>
-    <td>${r.pos}${r.epr}</td><td>${r.mpr != null ? r.pos + r.mpr : "–"}</td><td class="hide-sm">${f1(r.pred)}</td>
+    <td>${r.pos}${r.epr}</td><td>${r.mpr != null ? r.pos + r.mpr : "–"}</td><td class="hide-sm">${f1(r.pred)}</td><td class="hide-sm">${pct(r.leap)}</td>
     <td>${r.verdict ? `<span class="v ${r.verdict}">${r.verdict}</span>` : `<span class="muted">${esc(r.note)}</span>`}</td>
     <td class="hide-sm">${r.hr != null ? `${pct(r.hr)} <span class="muted">of ${r.hn}</span>` : "–"}</td>
     <td class="hide-sm">${f1(r.ppg26)}${r.g26 != null ? ` <span class="muted">(${r.g26}g)</span>` : ""}</td></tr>`).join("")
@@ -639,7 +640,7 @@ if board_path.exists():
     bdata = clean({
         "rows": [{"ov": r["overall_rank"], "name": r["player"], "pos": r["position"], "team": r["team"],
                   "epr": r["expert_pos_rank"], "mpr": r["model_pos_rank"], "pred": r["pred_ppg_2026"],
-                  "base": r["baseline_ppg"], "verdict": r["verdict"] if isinstance(r["verdict"], str) else None,
+                  "base": r["baseline_ppg"], "leap": r["leap_prob_2026"], "verdict": r["verdict"] if isinstance(r["verdict"], str) else None,
                   "tier": r["tier"] if isinstance(r["tier"], str) else None,
                   "hr": r["hist_beat_rate"], "hn": r["hist_players"],
                   "note": r["note"] if isinstance(r["note"], str) else "",
