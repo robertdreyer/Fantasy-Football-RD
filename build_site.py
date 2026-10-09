@@ -58,6 +58,41 @@ summary_path = PRED / "2026_grade_summary.csv"
 live = pd.read_csv(summary_path).to_dict("records") if summary_path.exists() else []
 
 
+# ---------------------------------------------------------------------------
+# Model vs. the experts (market_test.py has the backtest; 2026 is computed here and graded live)
+# ---------------------------------------------------------------------------
+MARKET_TOP = {"WR": 60, "RB": 40, "TE": 20}     # same groups as market_test.py
+mkt_path = PRED / "market_backtest_summary.csv"
+market_hist = pd.read_csv(mkt_path).to_dict("records") if mkt_path.exists() else []
+# The 2026 picks come from the FIRST saved set of predictions, so later model changes can't
+# quietly swap players in or out of the list that's being graded.
+archived = sorted((PRED / "archive").glob("2026_jump_predictions_*.csv"))
+first = pd.read_csv(archived[0]) if archived else pd.read_csv(PRED / "2026_jump_predictions.csv")
+market_source = archived[0].stem.replace("2026_jump_predictions_", "") if archived else "current"
+first = first.merge(preds[["player_id", "games_2026", "ppg_2026"]], on="player_id", how="left")
+m26 = []
+for p_, x in first[first["next_preseason_rank"].notna()].groupby("position"):
+    x = x[x["next_preseason_rank"] <= MARKET_TOP[p_]].copy()
+    x["market_rank"] = x["next_preseason_rank"].rank(method="first")
+    x["model_rank"] = x["pred_ppg_2026"].rank(ascending=False, method="first")
+    x["disagreement"] = x["market_rank"] - x["model_rank"]
+    x["tier"] = pd.cut(x["market_rank"].rank(pct=True), [0, 1 / 3, 2 / 3, 1],
+                       labels=["early picks", "middle picks", "late picks"]).astype(str)
+    x["likes_more"] = x.groupby("tier")["disagreement"].rank(pct=True) > 0.5
+    if through_week:
+        pts = (x["ppg_2026"] * x["games_2026"]).fillna(0)        # hasn't played = 0 points
+        x["rank_so_far"] = pts.rank(ascending=False, method="first")
+    else:
+        x["rank_so_far"] = np.nan
+    m26.append(x)
+m26 = pd.concat(m26) if m26 else pd.DataFrame()
+market_2026 = [{"name": r["name"], "pos": r["position"],
+                "team": r["next_preseason_team"] if isinstance(r["next_preseason_team"], str) else r["team"],
+                "tier": r["tier"], "market": r["market_rank"], "model": r["model_rank"], "dis": r["disagreement"],
+                "more": bool(r["likes_more"]), "now": r["rank_so_far"], "ppg26": r["ppg_2026"], "g26": r["games_2026"]}
+               for r in m26.to_dict("records")]
+
+
 def clean(x):
     """JSON can't hold NaN: turn it into null, and round floats to keep the page small."""
     if isinstance(x, dict):
@@ -72,6 +107,7 @@ def clean(x):
 
 
 data = clean({"players": players, "backtest": backtest, "live": live,
+              "marketHist": market_hist, "market2026": market_2026, "marketSource": market_source,
               "throughWeek": through_week, "updated": date.today().strftime("%B %-d, %Y") if os.name != "nt"
               else date.today().strftime("%B %#d, %Y"), "repo": REPO_URL})
 
@@ -162,6 +198,13 @@ tr.detail td { text-align: left; background: var(--surface-2); white-space: norm
 .method li { margin: 8px 0; color: var(--ink-2); } .method b { color: var(--ink); }
 footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
 .empty { padding: 20px; color: var(--ink-3); }
+.mkt th:nth-child(3), .mkt td:nth-child(3) { text-align: right; }
+.card.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.pair { display: flex; gap: 10px; margin-top: 6px; }
+.pair div { flex: 1; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; }
+.pair b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.pair span { font-size: 12px; color: var(--ink-2); }
+.note { font-size: 13px; color: var(--ink-3); margin-top: 8px; }
 @media (max-width: 640px) { .hide-sm { display: none; } .why { grid-template-columns: 120px 1fr; } }
 </style>
 </head>
@@ -193,6 +236,17 @@ footer { color: var(--ink-3); font-size: 13px; padding: 36px 0 48px; }
 <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
 <p class="sub" style="margin-top:8px">Click a player to see what drives his prediction. PPG = PPR fantasy points per game.
 Baseline = games-weighted PPG over 2024–2025.</p>
+
+<h2>Model vs. the experts</h2>
+<p class="sub">Where the model disagrees with expert consensus rankings (FantasyPros, before each season), who is right?
+Players are compared only with others the experts ranked similarly. Backtest: the experts' top <span id="mkttop"></span>
+each season from 2020 to 2025, with predictions trained only on earlier seasons. Players who got hurt count as 0 points.</p>
+<div class="cards" id="mktcards"></div>
+<h3 style="margin:22px 0 4px;font-size:16px">2026 middle-round picks: the model's view vs. the experts'</h3>
+<p class="sub" id="mktlive"></p>
+<div class="tablewrap"><table class="mkt" id="mkttbl"><thead></thead><tbody></tbody></table></div>
+<p class="note">Experts / Model = each one's preseason rank within this group. So far = rank by total PPR points this
+season within the same group; blue = beating his expert rank, red = behind it.</p>
 
 <h2>Live check: predicted vs. actual 2026 change</h2>
 <p class="sub" id="livesub"></p>
@@ -355,11 +409,47 @@ document.getElementById("method").innerHTML = [
   `<b>Change model:</b> ridge regression predicting next season's PPG minus that baseline, from ~25 factors per position: track record, per-route efficiency, usage, red-zone role, age and draft capital, depth chart, targets and carries vacated by departed teammates, QB play, blocking and schedule.`,
   `<b>Leap model:</b> logistic regression for the chance of a big leap (WR/RB: +4 PPG and 14+ PPG; TE: +3 and 11+).`,
   `<b>Honest testing:</b> each season from 2019 to 2024 is predicted with a model trained only on earlier seasons. The 2026 predictions use data through the 2025 season plus preseason depth charts and rankings, never 2026 results.`,
+  `<b>Model vs. the experts:</b> the model doesn't out-rank expert consensus overall, but when it disagrees with the experts on middle-round picks it has been right more often: in the 2020–2025 backtest, middle picks it liked more beat their expert rank 54% of the time vs. 33% for the ones it liked less (no edge on early picks). A first version of this test overstated the edge because "disagreement" and "beat the market" both contain the expert rank; a placebo with random rankings caught it.`,
   `<b>Biggest drivers:</b> regression to the mean (high baselines fall), youth and draft capital, efficiency per route run, and opportunity: depth-chart role and vacated targets or carries.`,
   `<b>Walkthroughs:</b> ${nb("wr_jump_model.ipynb")}, ${nb("rb_jump_model.ipynb")}, ${nb("te_jump_model.ipynb")}, ${nb("wr_breakouts.ipynb")}.`,
 ].map(t => `<li>${t}</li>`).join("");
 
-function render() { renderLeaps(); renderTable(); renderChart(); }
+function renderMarket() {
+  const TOPN = {WR: 60, RB: 40, TE: 20};
+  document.getElementById("mkttop").textContent = TOPN[pos] + " " + pos + "s";
+  const hist = DATA.marketHist.filter(r => r.position === pos);
+  const tiers = ["early picks", "middle picks", "late picks"];
+  document.getElementById("mktcards").innerHTML = hist.length ? tiers.map(t => {
+    const more = hist.find(r => r.market_tier === t && r.model_view === "model likes more");
+    const less = hist.find(r => r.market_tier === t && r.model_view === "model likes less");
+    if (!more || !less) return "";
+    return `<div class="card ${t === "middle picks" ? "hl" : ""}"><h3>${t[0].toUpperCase() + t.slice(1)} · beat their expert rank</h3>
+      <div class="pair"><div><b class="pos-up">${pctf(more.share_beat_market)}</b><span>model liked more (${more.players})</span></div>
+      <div><b>${pctf(less.share_beat_market)}</b><span>model liked less (${less.players})</span></div></div>
+      <div class="note">Avg finish: ${f1(more.avg_actual_rank)} vs ${f1(less.avg_actual_rank)} (both drafted ~${Math.round((more.avg_market_rank + less.avg_market_rank) / 2)})</div></div>`;
+  }).join("") : `<p class="sub">Run market_test.py to add the backtest.</p>`;
+
+  const rows = DATA.market2026.filter(r => r.pos === pos && r.tier === "middle picks").sort((a, b) => b.dis - a.dis);
+  const live = rows.filter(r => r.now != null);
+  const beat = rs => rs.filter(r => r.now < r.market).length;
+  const M = live.filter(r => r.more), L = live.filter(r => !r.more);
+  document.getElementById("mktlive").textContent = DATA.throughWeek && live.length
+    ? `Through Week ${DATA.throughWeek}: ${beat(M)} of ${M.length} the model liked more are beating their expert rank, vs ${beat(L)} of ${L.length} it liked less. Early in the season, so expect big swings.`
+    : "Graded once the 2026 season starts.";
+  if (DATA.marketSource !== "current") document.getElementById("mktlive").textContent += ` Picks locked from the predictions saved ${DATA.marketSource}.`;
+  const head = ["Player", "Team", "Experts", "Model", "Model's view", "So far", "PPG so far"];
+  document.querySelector("#mkttbl thead").innerHTML = "<tr>" + head.map((h, i) =>
+    `<th class="${i === 1 || i === 4 || i === 6 ? "hide-sm" : ""}">${h}</th>`).join("") + "</tr>";
+  document.querySelector("#mkttbl tbody").innerHTML = rows.map(r => {
+    const beating = r.now != null && r.now < r.market;
+    return `<tr><td>${esc(r.name)}</td><td class="hide-sm">${esc(r.team || "")}</td><td>${pos}${r.market}</td>
+      <td>${pos}${r.model}</td><td class="hide-sm"><span class="chip ${r.more ? "up" : "down"}">${r.more ? "likes more" : "likes less"}</span></td>
+      <td class="${r.now == null ? "" : beating ? "pos-up" : "pos-down"}">${r.now == null ? "–" : pos + r.now}</td>
+      <td class="hide-sm">${f1(r.ppg26)}${r.g26 != null ? ` <span style="color:var(--ink-3)">(${r.g26}g)</span>` : ""}</td></tr>`;
+  }).join("");
+}
+
+function render() { renderLeaps(); renderTable(); renderMarket(); renderChart(); }
 render();
 </script>
 </body>

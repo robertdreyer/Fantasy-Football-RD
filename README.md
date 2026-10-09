@@ -19,6 +19,7 @@ player-tracking (Next Gen Stats), coaching, schedule, and injury data.
 | 2d. RB and TE jump model walkthroughs | `notebooks/rb_jump_model.ipynb`, `notebooks/te_jump_model.ipynb` | ✅ |
 | 3. Jump models for WR, TE, RB: predicted PPG change + leap probability, backtested 2019-2024 | `jump_model.py` → `predictions/` | ✅ |
 | 4. Grade 2026 predictions against actual results as the season goes | `grade_2026.py` | ✅ (in progress) |
+| 4b. Model vs. expert rankings backtest | `market_test.py` → `predictions/market_backtest*.csv` | ✅ |
 | 5. Website: predictions, per-player explanations, live grading | `build_site.py` → GitHub Pages | ✅ |
 | 6. Weekly automation: grade + rebuild + publish every Tuesday | `.github/workflows/weekly-update.yml` | ✅ |
 | 7. Rookie projections from college data | — | planned |
@@ -51,6 +52,14 @@ Backtest (each season predicted using only earlier seasons, 2019-2024): the mode
 "he'll repeat his baseline" at every position. Players in the top 10% of predicted change gained
 about +1.6 to +2.1 PPR points per game on average; the bottom 10% lost about 2.9 to 3.9.
 Details: `predictions/backtest_summary.csv`.
+
+**Model vs. the experts** (`market_test.py`): expert consensus rankings still order drafted players a bit
+better than the model overall, but the model adds information the experts miss (p = 0.02 after
+controlling for expert rank). The edge is in the middle rounds: among players the experts ranked about
+the same (2020-2025), middle-round picks the model liked more beat their expert rank 54% of the time,
+vs. 33% for the ones it liked less; no edge on early picks. The site grades the 2026 middle-round picks
+weekly. (A first version of this test overstated the edge, because "disagreement" and "beat the market"
+both contain the expert rank; a placebo with random rankings caught it.)
 
 Play-callers: when a team changes play-callers, the new caller's past offensive production
 (points, yards, TDs, fantasy points; shrunk toward average) predicts the team's offense the next
