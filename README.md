@@ -1,6 +1,6 @@
 # Fantasy Football RD
 
-**Live site:** https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/ (2026 predictions, graded every week)
+**Live site:** https://robertdreyer.github.io/Fantasy-Football-RD/ (2026 predictions, graded every week)
 
 Player ratings and fantasy point projections built from NFL play-by-play,
 player-tracking (Next Gen Stats), coaching, schedule, and injury data.
